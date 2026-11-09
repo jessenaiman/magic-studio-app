@@ -1,13 +1,62 @@
 import React from "react";
-import { CharacterPart } from "../../api";
 import { SpriteAction } from "./AnimationStage";
+
+type KeyValue = number | number[];
+
+export interface RigKeyChannel {
+  path: string;
+  name: string;
+  type: string;
+  keys: Array<{ time: number; value: KeyValue; in: string; out: string }>;
+  samples: Array<{ time: number; value: KeyValue }>;
+}
+
+export interface RigKeyLayer {
+  id: number;
+  name: string;
+  parent: string | null;
+  channels: RigKeyChannel[];
+}
+
+/** The reply of `character.keys`. `start` and `end` are null when the action has no keys. */
+export interface RigKeys {
+  comp: string;
+  fps: number;
+  action: string | null;
+  start: number | null;
+  end: number | null;
+  layers: RigKeyLayer[];
+}
+
+const components = (value: KeyValue): number[] => (Array.isArray(value) ? value : [value]);
+
+/** Maps a channel's values into the 22-unit row, using the component that moves the most. */
+function rowScale(channel: RigKeyChannel) {
+  const count = Math.max(1, ...channel.samples.map((s) => components(s.value).length));
+  let axis = 0;
+  let widest = -1;
+  for (let i = 0; i < count; i += 1) {
+    const values = channel.samples.map((s) => components(s.value)[i] ?? 0);
+    const range = Math.max(...values) - Math.min(...values);
+    if (range > widest) {
+      widest = range;
+      axis = i;
+    }
+  }
+  const values = channel.samples.map((s) => components(s.value)[axis] ?? 0);
+  const min = Math.min(...values);
+  const range = Math.max(...values) - min;
+  return (value: KeyValue) => (range > 0 ? 19 - (((components(value)[axis] ?? 0) - min) / range) * 16 : 11);
+}
 
 interface AnimationTheatreProps {
   theatreTab: "theatre" | "keys" | "curves";
   onSelectTheatreTab: (tab: "theatre" | "keys" | "curves") => void;
   selectedBone: string;
   onSelectBone: (boneId: string) => void;
-  parts: CharacterPart[];
+  rigKeys: RigKeys | null;
+  keysError: string;
+  isSpriteCycle: boolean;
   currentTime: number;
   duration: number;
   onSeek: (time: number) => void;
@@ -24,7 +73,9 @@ export const AnimationTheatre: React.FC<AnimationTheatreProps> = ({
   onSelectTheatreTab,
   selectedBone,
   onSelectBone,
-  parts,
+  rigKeys,
+  keysError,
+  isSpriteCycle,
   currentTime,
   duration,
   onSeek,
@@ -36,22 +87,18 @@ export const AnimationTheatre: React.FC<AnimationTheatreProps> = ({
   onToast,
 }) => {
   const playheadAt = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) : 0;
-  const channelList =
-    parts.length > 0
-      ? parts.map((p) => ({ id: p.id, label: p.name || p.id, parent: p.parent || "root" }))
-      : [
-          { id: "torso", label: "torso", parent: "root" },
-          { id: "head", label: "head", parent: "torso" },
-          { id: "arm_L", label: "arm_L", parent: "torso" },
-          { id: "arm_R", label: "arm_R", parent: "torso" },
-          { id: "leg_L", label: "leg_L", parent: "torso" },
-          { id: "leg_R", label: "leg_R", parent: "torso" },
-        ];
+  const layers = isSpriteCycle ? [] : (rigKeys?.layers ?? []);
+  const windowStart = rigKeys?.start ?? 0;
+  const windowSpan = Math.max((rigKeys?.end ?? 0) - windowStart, 1e-6);
+  const xOf = (time: number) => ((time - windowStart) / windowSpan) * 200;
+  const emptyMessage = isSpriteCycle
+    ? "2D sprite cycle: drawn frames, so there are no bone keys."
+    : keysError || "No rig keys for this character.";
 
   return (
     <section
       className="motion-theatre"
-      data-view={theatreTab === "theatre" ? "curves" : theatreTab}
+      data-view="curves"
       aria-label="Theatre timeline"
     >
       <div id="theatre-bar" className="theatre-heading">
@@ -170,29 +217,36 @@ export const AnimationTheatre: React.FC<AnimationTheatreProps> = ({
               </div>
             </div>
 
-            {channelList.map((ch, idx) => {
-              const isSel = selectedBone === ch.id;
-              const phase = idx * 0.6;
+            {layers.length === 0 && (
+              <div className="panel-empty">
+                <p className="muted">{emptyMessage}</p>
+              </div>
+            )}
+
+            {layers.map((layer) => {
+              const isSel = selectedBone === layer.name;
+              const channel = layer.channels.find((c) => c.path === "transform/rotation") ?? layer.channels[0];
+              const yOf = channel ? rowScale(channel) : null;
               return (
                 <div
-                  key={ch.id}
+                  key={layer.id}
                   className={`theatre-row ${isSel ? "selected" : ""}`}
                   style={
                     {
                       "--tone": isSel ? "var(--amber)" : "var(--motion-blue)",
                     } as React.CSSProperties
                   }
-                  onClick={() => onSelectBone(ch.id)}
+                  onClick={() => onSelectBone(layer.name)}
                 >
                   <button
                     type="button"
                     className="theatre-channel"
-                    onClick={() => onSelectBone(ch.id)}
+                    onClick={() => onSelectBone(layer.name)}
                   >
-                    {ch.label}
+                    {layer.name}
                   </button>
                   <span className="theatre-motion">
-                    {selectedSprite ? `${selectedSprite.name} (${selectedSprite.fps || 24}fps)` : activeActionName}
+                    {channel ? `${channel.name} · ${channel.keys.length} keys` : "no keys"}
                   </span>
                   <svg
                     className="theatre-curve"
@@ -207,21 +261,25 @@ export const AnimationTheatre: React.FC<AnimationTheatreProps> = ({
                       onSeek(Number((frac * duration).toFixed(3)));
                     }}
                   >
-                    <path
-                      d={`M 0 11 Q 50 ${11 - Math.sin(phase + 1) * 7}, 100 11 T 200 11`}
-                      fill="none"
-                      stroke={isSel ? "var(--amber)" : "var(--motion-blue)"}
-                      strokeWidth="1.6"
-                    />
-                    {[0.125, 0.375, 0.625, 0.875].map((kt) => (
-                      <circle
-                        key={kt}
-                        cx={kt * 200}
-                        cy={11 - Math.sin(phase + kt * Math.PI * 2) * 5}
-                        r={isSel ? 3 : 2.2}
-                        fill={isSel ? "var(--amber)" : "var(--accent)"}
+                    {channel && yOf && theatreTab !== "keys" && (
+                      <polyline
+                        points={channel.samples.map((s) => `${xOf(s.time)},${yOf(s.value)}`).join(" ")}
+                        fill="none"
+                        stroke={isSel ? "var(--amber)" : "var(--motion-blue)"}
+                        strokeWidth="1.6"
                       />
-                    ))}
+                    )}
+                    {channel &&
+                      yOf &&
+                      channel.keys.map((key) => (
+                        <circle
+                          key={key.time}
+                          cx={xOf(key.time)}
+                          cy={yOf(key.value)}
+                          r={isSel ? 3 : 2.2}
+                          fill={isSel ? "var(--amber)" : "var(--accent)"}
+                        />
+                      ))}
                   </svg>
                 </div>
               );

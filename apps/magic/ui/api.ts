@@ -278,13 +278,39 @@ export interface WordsReadResponse {
   recipe_path?: string;
 }
 
+export type AnimationStyle = "sprite_2d" | "cutout_2_5d" | "rig_3d" | "cutout";
+
+export interface Character3DClip {
+  id: string;
+  name?: string;
+  animation_style?: AnimationStyle;
+  source?: string;
+  category?: string;
+  duration?: number;
+  in_place?: boolean;
+  fbx?: string;
+  glb?: string;
+  blend?: string;
+  preview?: string;
+}
+
 export interface Character3D {
-  primary_glb?: string; glb_files?: string[]; model_clips?: string[]; rigged?: boolean;
+  available?: boolean;
+  animation_style?: AnimationStyle;
+  primary_glb?: string;
+  glb_files?: string[];
+  blend_files?: string[];
+  fbx_files?: string[];
+  model_clips?: string[];
+  clips?: Character3DClip[];
+  rigged?: boolean;
+  bone_count?: number;
   video_previews?: string[];
 }
 
 export interface CharacterSpriteSummary {
   name: string;
+  animation_style?: AnimationStyle;
   ecproj: string;
   preview?: string;
   frames?: string[];
@@ -294,6 +320,7 @@ export interface CharacterSpriteSummary {
 
 export interface CharacterViewSummary {
   view: string;
+  animation_style?: AnimationStyle;
   drawing?: string;
   size?: [number, number];
   status?: string;
@@ -311,6 +338,8 @@ export interface CharacterSummary {
   tripo_3d?: Character3D;
   id: string;
   name?: string;
+  animation_style?: AnimationStyle;
+  animation_styles?: AnimationStyle[];
   views?: Array<string | CharacterViewSummary>;
   sprites?: Array<string | CharacterSpriteSummary>;
   shots?: string[];
@@ -326,6 +355,9 @@ export interface CharacterPart {
   visible?: boolean;
   joint?: [number, number];
   outline?: Array<[number, number]>;
+  bounds?: [number, number, number, number];
+  pins?: Array<[number, number]>;
+  source?: string;
   file?: string;
 }
 
@@ -340,6 +372,8 @@ export interface CharacterActionDef {
 export interface CharacterMetaResponse {
   tripo_3d?: Character3D;
   character?: string;
+  animation_style?: AnimationStyle;
+  animation_styles?: AnimationStyle[];
   skeleton?: string;
   views?: CharacterViewSummary[];
   parts?: CharacterPart[];

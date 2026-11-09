@@ -41,12 +41,18 @@ fn numbered_prompts(text: &str) -> std::collections::BTreeMap<usize, String> {
 }
 
 pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> {
-    let _dir = project_dir(s)?;
+    let dir = project_dir(s)?;
     let raw = params.get("path").and_then(Value::as_str).ok_or_else(|| EngineError::InvalidParams("missing audio 'path'".into()))?;
     let audio = song_audio_path(s, raw)?;
     s.song_audio = Some(audio.clone());
     s.video_target = "filmcraft".into();
     crate::cmd::project::write_project_file(s)?;
+    let sb = dir.join("storyboard.designcraft");
+    if !sb.is_file() {
+        let _ = crate::cmd::storyboard::cmd_storyboard_new(s, &json!({"path": sb, "overwrite": false}));
+    } else {
+        let _ = crate::cmd::storyboard::cmd_storyboard_export(s, &json!({"path": sb, "pdf": dir.join("storyboard.pdf"), "pptx": dir.join("storyboard.pptx")}));
+    }
     let mut status = workshop_status(s)?;
     status["audio"] = json!(audio);
     Ok(status)

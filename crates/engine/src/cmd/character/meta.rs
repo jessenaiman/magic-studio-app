@@ -59,6 +59,7 @@ fn view_summary(view: &View) -> Value {
     };
     json!({
         "view": view.view,
+        "animation_style": parts["animation_style"].as_str().unwrap_or(if ecproj.is_file() || view.file("psd").is_file() || parts["parts"].is_array() { "cutout_2_5d" } else { "cutout" }),
         "drawing": drawing,
         "size": size,
         "status": parts["status"],
@@ -97,6 +98,7 @@ pub fn cmd_character_meta(s: &mut Session, p: &Value) -> Result<Value> {
             .unwrap_or(Value::Null);
         views.push(json!({
             "view": "front",
+            "animation_style": "cutout",
             "drawing": cutout,
             "size": size,
             "status": "unmarked cutout; click Mark parts… to mark with Scribbles",
@@ -113,8 +115,9 @@ pub fn cmd_character_meta(s: &mut Session, p: &Value) -> Result<Value> {
     let actions = super::action::action_summaries(&table);
     let tripo_3d = super::tripo::inspect_character_3d(s, &project_dir, &char_id);
     let sprites = super::sprite_summaries(&char_folder);
-    Ok(json!({"ok": true, "character": char_id, "skeleton": table["skeleton"],
-        "views": views, "actions": actions, "sprites": sprites, "tripo_3d": tripo_3d}))
+    let (animation_style, animation_styles) = super::classify_animation_style(&views, &sprites, &tripo_3d);
+    Ok(json!({"ok": true, "character": char_id, "animation_style": animation_style, "animation_styles": animation_styles,
+        "skeleton": table["skeleton"], "views": views, "actions": actions, "sprites": sprites, "tripo_3d": tripo_3d}))
 }
 
 fn check_part(part: &Value, known: &[Value]) -> Result<()> {

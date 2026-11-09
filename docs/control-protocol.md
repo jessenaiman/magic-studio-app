@@ -71,9 +71,6 @@ View names: `home`, `project` (alias `projects`), `storyboard`, `design` (alias
 explicit unsupported-operation errors. Playback and panel control still require actual
 implementations during restoration.
 
-Frontend commands use Tauri IPC directly. External mutations refresh the frontend
-through one session-snapshot path. External reads do not reset navigation. Engine
-work runs off the event loop and session access is serialized.
 
 ## MCP tools
 
@@ -113,16 +110,3 @@ args = ["mcp", "--bridge", "127.0.0.1:9876"]
 The bridge needs the desktop's `MAGIC_CONTROL_TOKEN` in the client's environment. Never write the token
 into `.mcp.json`, a client config, or a command line. Without it, the bridge server reports the missing
 token.
-
-## Removed legacy paths
-
-There is one Tauri configuration (`apps/magic/tauri.conf.json`) and one
-startup parser (Clap). The CLI-plugin parser and the duplicate config under
-`apps/magic` are removed. The standalone browser HTTP server, Unix-socket
-auto-discovery, `--follow-window`, `mcp --connect`, old `magic_*` MCP tool aliases,
-and duplicate CLI socket client are removed. CLI and MCP share the `Remote`
-client. Update MCP client configurations to the explicit bridge command above;
-existing processes must be restarted after rebuilding.
-
-The authoring UI sources are loaded by the Tauri shell; they are not a second
-Tauri launch configuration. UI restoration has not been completed by this change.

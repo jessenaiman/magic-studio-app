@@ -238,10 +238,12 @@ pub(crate) fn inspect_character_3d(s: &Session, project_dir: &Path, id: &str) ->
     let glb_joints = model_doc.as_ref().map(glb_joint_count).unwrap_or(0);
     let model_clips = model_doc.as_ref().map(glb_clip_names).unwrap_or_default();
     let bone_count = import_meta["bones"].as_u64().unwrap_or(0).max(glb_joints);
-    let rigged = bone_count > 0;
+    let rigged = bone_count > 0 || !blend_files.is_empty();
     let has_3d = primary_glb.is_some() || !fbx_files.is_empty() || !blend_files.is_empty();
+    let anim_style = manifest["animation_style"].as_str().unwrap_or("rig_3d");
     json!({
         "available": has_3d,
+        "animation_style": anim_style,
         "directory": canonical,
         "primary_glb": primary_glb,
         "glb_files": glb_files,

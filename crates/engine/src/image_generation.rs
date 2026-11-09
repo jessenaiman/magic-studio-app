@@ -15,9 +15,14 @@ fn invalid(message: &str) -> EngineError {
 }
 
 fn validated_png(path: &Path) -> Result<(u32, u32, String)> {
-    let bytes = fs::read(path).map_err(|e| invalid(&format!("Cannot read image: {e}")))?;
+    let mut bytes = fs::read(path).map_err(|e| invalid(&format!("Cannot read image: {e}")))?;
     if image::guess_format(&bytes).ok() != Some(image::ImageFormat::Png) {
-        return Err(invalid("Generated output is not a valid PNG"));
+        if let Ok(decoded) = image::load_from_memory(&bytes) {
+            decoded.save_with_format(path, image::ImageFormat::Png).map_err(|e| invalid(&format!("Failed to normalize image to PNG: {e}")))?;
+            bytes = fs::read(path).map_err(|e| invalid(&format!("Cannot read normalized PNG: {e}")))?;
+        } else {
+            return Err(invalid("Generated output is not a valid PNG"));
+        }
     }
     let (w, h) = image::image_dimensions(path).map_err(|e| invalid(&format!("Cannot read image dimensions: {e}")))?;
     if w == 0 || h == 0 || u64::from(w) * u64::from(h) > 16_777_216 {
@@ -34,7 +39,7 @@ fn prepare_output_dir(s: &Session) -> Result<(PathBuf, PathBuf)> {
 
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| invalid(&e.to_string()))?.as_nanos();
     let dir = parent.join(format!("image-{}-{stamp}", std::process::id()));
-    fs::create_dir_all(&dir).map_err(|e| invalid(&format!("Failed to create image dir: {e}")))?;
+    fs::create_dir_all(&dir).map_err(|e| invalid(&format!("Failed to create asset dir: {e}")))?;
 
     Ok((dir.join("asset.png"), dir.join("generation.json")))
 }
@@ -88,6 +93,30 @@ fn generate_via_guarded_codex(prompt: &str, references: &[PathBuf], dir: &Path, 
     Ok(())
 }
 
+/// Draw through the signed-in Google Flow tab (`flow-clip --mode image` via `agent-browser`).
+fn generate_via_flow(prompt: &str, references: &[PathBuf], model: Option<&str>, out: &Path) -> Result<()> {
+    let cli = crate::workspace::find_executable("flow-clip").map_err(|e| EngineError::ExternalTool("flow-clip".into(), e.to_string()))?;
+    let mut cmd = Command::new(&cli);
+    cmd.args(["--mode", "image", "--prompt", prompt, "--out"]).arg(out);
+    if let Some(m) = model.filter(|s| !s.trim().is_empty() && *s != "gpt-6-luna") {
+        cmd.args(["--model", m]);
+    }
+    if !references.is_empty() {
+        cmd.args(["--ingredient", "recent"]);
+    }
+    crate::workspace::scrub_inherited_credentials(&mut cmd);
+    let output = cmd.output().map_err(|e| EngineError::ExternalTool("flow-clip".into(), format!("Failed to launch flow-clip: {e}")))?;
+    if !output.status.success() {
+        return Err(invalid(&format!(
+            "Flow image generation failed (exit {:?}): {}{}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+    Ok(())
+}
+
 /// Public engine entrypoint to generate a single image and register it in the session.
 pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
     let prompt = p["prompt"].as_str().map(str::trim).filter(|v| !v.is_empty()).ok_or_else(|| invalid("image.generate needs prompt=<description>"))?;
@@ -116,8 +145,9 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
 
     match provider {
         "codex" => generate_via_guarded_codex(prompt, &references, work_dir, &out_png)?,
-        // Images come from the Codex subscription service only, never a paid image API.
-        other => return Err(invalid(&format!("unknown image provider `{other}`: images are drawn through the Codex service (provider=codex)"))),
+        "flow" => generate_via_flow(prompt, &references, p["model"].as_str(), &out_png)?,
+        // Images come from the subscription services only, never a paid image API.
+        other => return Err(invalid(&format!("unknown image provider `{other}`: images are drawn through `codex` or `flow`"))),
     }
 
     let (width, height, sha256) = validated_png(&out_png)?;

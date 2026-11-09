@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import {
+  AnimationStyle,
+  Character3DClip,
   CharacterMetaResponse,
   CharacterPart,
   CharacterSpriteSummary,
@@ -12,7 +14,9 @@ import { Dial, Slider, Toggle } from "../../components/controls";
 interface AnimationPoseInspectorProps {
   selectedCharId: string;
   selectedView: string;
+  animationStyle: AnimationStyle;
   onSelectView: (view: string) => void;
+  onChangeAnimationStyle: (style: AnimationStyle) => void;
   selectedBone: string;
   onSelectBone: (bone: string) => void;
   meta: CharacterMetaResponse | null;
@@ -112,7 +116,9 @@ const STANDARD_ACTIONS = [
 export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
   selectedCharId,
   selectedView,
+  animationStyle,
   onSelectView,
+  onChangeAnimationStyle,
   selectedBone,
   onSelectBone,
   meta,
@@ -234,6 +240,13 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
   );
   const passedChecks = [isMarked, isCut, isRigged, hasSpritesOr3D].filter(Boolean).length;
 
+  const clips3D: Character3DClip[] = meta?.tripo_3d?.clips || [];
+  const modelClipNames: string[] = meta?.tripo_3d?.model_clips || [];
+  const drawnViews = (meta?.views || []).filter((v) => Boolean(v.drawing || v.parts?.length || v.ecproj));
+  const hasMultipleDrawnViews = drawnViews.length > 1;
+  const sprite2DCycles = sprites.filter((s) => s.animation_style === "sprite_2d");
+  const rig25DCycles = sprites.filter((s) => s.animation_style !== "sprite_2d");
+
   const runPrepareStep = async (cmd: string, label: string) => {
     try {
       onToast(`${label} (${selectedCharId} · ${selectedView})…`);
@@ -245,13 +258,96 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
     }
   };
 
+  const runAssembleBlender = async (openGui: boolean) => {
+    try {
+      onToast(
+        `${openGui ? "Opening 2.5D/3D rig in Blender" : "Assembling 2.5D/3D pieces in Blender"} (${selectedCharId})…`
+      );
+      await executeCommand("scribbles.blender", {
+        character: selectedCharId,
+        view: selectedView,
+        open: openGui,
+      });
+      await onRefreshCharacter();
+      onToast(
+        openGui
+          ? `Opened ${selectedCharId} 2.5D/3D rig in Blender`
+          : `Assembled ${selectedCharId} 2.5D/3D rig (.blend + .glb)`
+      );
+    } catch (err) {
+      onToast(String(err));
+    }
+  };
+
   return (
     <aside
       id="motion-inspector"
       className="motion-inspector"
       data-ui-config="motion-inspector"
+      data-animation-style={animationStyle}
       aria-label="Animation controls"
     >
+      {/* 0. ANIMATION STYLE BAR (2D Sprite vs 2.5D Layered Rig vs 3D Model Animations) */}
+      <div
+        id="anim-style-bar"
+        className="panel"
+        style={{ padding: "var(--space-2) var(--space-3)", marginBottom: "var(--space-2)" }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "6px",
+          }}
+        >
+          <span className="title" style={{ fontSize: "var(--text-xs)", fontWeight: 600 }}>
+            Animation Style
+          </span>
+          <span id="anim-style-badge" className="meta">
+            {animationStyle === "sprite_2d"
+              ? "2D Sprite Sheet"
+              : animationStyle === "rig_3d"
+                ? "3D Model Animations"
+                : "2.5D Cutout Rig"}
+          </span>
+        </div>
+        <div className="segmented" role="tablist" aria-label="Character animation style">
+          <button
+            id="style-tab-sprite-2d"
+            type="button"
+            role="tab"
+            aria-selected={animationStyle === "sprite_2d"}
+            className={animationStyle === "sprite_2d" ? "active" : ""}
+            onClick={() => onChangeAnimationStyle("sprite_2d")}
+          >
+            2D Sprite
+          </button>
+          <button
+            id="style-tab-cutout-2-5d"
+            type="button"
+            role="tab"
+            aria-selected={animationStyle === "cutout_2_5d" || animationStyle === "cutout"}
+            className={
+              animationStyle === "cutout_2_5d" || animationStyle === "cutout" ? "active" : ""
+            }
+            onClick={() => onChangeAnimationStyle("cutout_2_5d")}
+          >
+            2.5D Rig
+          </button>
+          <button
+            id="style-tab-rig-3d"
+            type="button"
+            role="tab"
+            aria-selected={animationStyle === "rig_3d"}
+            className={animationStyle === "rig_3d" ? "active" : ""}
+            onClick={() => onChangeAnimationStyle("rig_3d")}
+          >
+            3D Anim
+          </button>
+        </div>
+      </div>
+
       {/* 1. ACTION (closed drawer by default per A3) */}
       <details id="motion-action" className="panel motion-section" data-look="motion">
         <summary className="panel-head" data-look="section">
@@ -319,47 +415,172 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
           </div>
 
           <div id="char-magic-panel" className="char-magic-panel">
-            <div className="char-magic-head">
-              <strong className="char-subhead">Views &amp; Sprite Cycles</strong>
-              <span id="char-magic-badge" className="char-magic-badge">
-                {sprites.length} cycles
-              </span>
-            </div>
-            <div id="char-angle-grid" className="char-angle-grid">
-              {(["front", "side", "back"] as const).map((v) => {
-                const viewObj = meta?.views?.find((x) => x.view === v);
-                const thumb = viewObj?.drawing;
-                return (
+            {animationStyle === "rig_3d" ? (
+              <>
+                <div className="char-magic-head">
+                  <strong className="char-subhead">3D Model Animations</strong>
+                  <span id="char-magic-badge" className="char-magic-badge">
+                    {clips3D.length || modelClipNames.length} clips
+                  </span>
+                </div>
+                <p className="motion-help" style={{ margin: "4px 0 8px" }}>
+                  3D models play skeletal animation clips (.glb / .blend) instead of 2D sprite sheets.
+                </p>
+                <div className="char-sheets-row">
+                  {clips3D.map((clip) => {
+                    const active = activeActionName === clip.id;
+                    return (
+                      <button
+                        key={clip.id}
+                        id={`anim-3d-clip-${clip.id}`}
+                        type="button"
+                        className={`char-sheet-card ${active ? "is-active" : ""}`}
+                        onClick={() => {
+                          onSelectSprite(null);
+                          onTriggerAction(clip.id);
+                        }}
+                      >
+                        <span>{clip.name || clip.id}</span>
+                      </button>
+                    );
+                  })}
+                  {clips3D.length === 0 &&
+                    modelClipNames.map((name) => {
+                      const active = activeActionName === name;
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          className={`char-sheet-card ${active ? "is-active" : ""}`}
+                          onClick={() => {
+                            onSelectSprite(null);
+                            onTriggerAction(name);
+                          }}
+                        >
+                          <span>{name}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+                <div className="motion-path-actions" style={{ marginTop: "8px" }}>
                   <button
-                    key={v}
+                    id="btn-assemble-3d-blender"
                     type="button"
-                    className={`char-thumb-card ${selectedView === v ? "is-active" : ""}`}
-                    onClick={() => onSelectView(v)}
+                    className="ghost"
+                    disabled={busy}
+                    onClick={() => void runAssembleBlender(false)}
                   >
-                    {thumb ? <img src={fileUrl(thumb)} alt={v} loading="lazy" /> : null}
-                    <span>{v}</span>
+                    Assemble 2.5D/3D Rig
                   </button>
-                );
-              })}
-            </div>
-            {sprites.length > 0 && (
-              <div className="char-sheets-row">
-                {sprites.map((sp) => {
-                  const thumb = sp.frames?.[0] || sp.preview;
-                  const active = selectedSprite?.name === sp.name;
-                  return (
-                    <button
-                      key={sp.name}
-                      type="button"
-                      className={`char-sheet-card ${active ? "is-active" : ""}`}
-                      onClick={() => onSelectSprite(sp)}
-                    >
-                      {thumb ? <img src={fileUrl(thumb)} alt={sp.name} loading="lazy" /> : null}
-                      <span>{sp.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+                  <button
+                    id="btn-open-3d-blender"
+                    type="button"
+                    className="start"
+                    disabled={busy}
+                    onClick={() => void runAssembleBlender(true)}
+                  >
+                    Open in Blender…
+                  </button>
+                </div>
+              </>
+            ) : animationStyle === "sprite_2d" ? (
+              <>
+                <div className="char-magic-head">
+                  <strong className="char-subhead">2D Directional Sprite Sheets</strong>
+                  <span id="char-magic-badge" className="char-magic-badge">
+                    {sprite2DCycles.length || sprites.length} sheets
+                  </span>
+                </div>
+                <p className="motion-help" style={{ margin: "4px 0 8px" }}>
+                  2D sprite characters play directional frame sheets (no 3D turnaround views).
+                </p>
+                {(sprite2DCycles.length > 0 ? sprite2DCycles : sprites).length > 0 && (
+                  <div className="char-sheets-row">
+                    {(sprite2DCycles.length > 0 ? sprite2DCycles : sprites).map((sp) => {
+                      const thumb = sp.frames?.[0] || sp.preview;
+                      const active = selectedSprite?.name === sp.name;
+                      return (
+                        <button
+                          key={sp.name}
+                          type="button"
+                          className={`char-sheet-card ${active ? "is-active" : ""}`}
+                          onClick={() => onSelectSprite(sp)}
+                        >
+                          {thumb ? <img src={fileUrl(thumb)} alt={sp.name} loading="lazy" /> : null}
+                          <span>{sp.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="char-magic-head">
+                  <strong className="char-subhead">2.5D Layered Rig &amp; Cycles</strong>
+                  <span id="char-magic-badge" className="char-magic-badge">
+                    {parts.length} layers · {sprites.length} cycles
+                  </span>
+                </div>
+                {hasMultipleDrawnViews && (
+                  <div id="char-angle-grid" className="char-angle-grid">
+                    {drawnViews.map((vObj) => {
+                      const v = vObj.view;
+                      const thumb = vObj.drawing;
+                      return (
+                        <button
+                          key={v}
+                          type="button"
+                          className={`char-thumb-card ${selectedView === v ? "is-active" : ""}`}
+                          onClick={() => onSelectView(v)}
+                        >
+                          {thumb ? <img src={fileUrl(thumb)} alt={v} loading="lazy" /> : null}
+                          <span>{v}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {(rig25DCycles.length > 0 ? rig25DCycles : sprites).length > 0 && (
+                  <div className="char-sheets-row">
+                    {sprites.map((sp) => {
+                      const thumb = sp.frames?.[0] || sp.preview;
+                      const active = selectedSprite?.name === sp.name;
+                      return (
+                        <button
+                          key={sp.name}
+                          type="button"
+                          className={`char-sheet-card ${active ? "is-active" : ""}`}
+                          onClick={() => onSelectSprite(sp)}
+                        >
+                          {thumb ? <img src={fileUrl(thumb)} alt={sp.name} loading="lazy" /> : null}
+                          <span>{sp.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="motion-path-actions" style={{ marginTop: "8px" }}>
+                  <button
+                    id="btn-assemble-2-5d-blender"
+                    type="button"
+                    className="ghost"
+                    disabled={busy}
+                    onClick={() => void runAssembleBlender(false)}
+                  >
+                    Assemble 2.5D/3D Planes
+                  </button>
+                  <button
+                    id="btn-open-2-5d-blender"
+                    type="button"
+                    className="ghost"
+                    disabled={busy}
+                    onClick={() => void runAssembleBlender(true)}
+                  >
+                    Open in Blender…
+                  </button>
+                </div>
+              </>
             )}
           </div>
 
@@ -853,18 +1074,22 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
         <div className="motion-section-body">
           <div id="magic-parts-slot" className="magic-parts-slot">
             <div id="character-prepare" className="seq-side-block" style={{ borderTop: 0, paddingTop: 0 }}>
-              <label className="seq-field">
-                <span>View</span>
-                <select
-                  id="character-prepare-view"
-                  value={selectedView}
-                  onChange={(e) => onSelectView(e.target.value)}
-                >
-                  <option value="front">Front</option>
-                  <option value="side">Side</option>
-                  <option value="back">Back</option>
-                </select>
-              </label>
+              {hasMultipleDrawnViews && (
+                <label className="seq-field">
+                  <span>View</span>
+                  <select
+                    id="character-prepare-view"
+                    value={selectedView}
+                    onChange={(e) => onSelectView(e.target.value)}
+                  >
+                    {drawnViews.map((vObj) => (
+                      <option key={vObj.view} value={vObj.view}>
+                        {vObj.view}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <p id="character-prepare-status" className="motion-help">
                 {activeViewSummary?.status || "Mark parts, cut layers in PhotoCraft, and rig in EffectCraft."}
               </p>
@@ -1429,18 +1654,20 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
             </div>
           </details>
 
-          <button
-            id="btn-generate-turnaround-sheet"
-            type="button"
-            className="ghost"
-            onClick={() => {
-              const nextView =
-                selectedView === "front" ? "side" : selectedView === "side" ? "back" : "front";
-              onSelectView(nextView);
-            }}
-          >
-            Another view…
-          </button>
+          {hasMultipleDrawnViews && (
+            <button
+              id="btn-generate-turnaround-sheet"
+              type="button"
+              className="ghost"
+              onClick={() => {
+                const idx = drawnViews.findIndex((v) => v.view === selectedView);
+                const nextView = drawnViews[(idx + 1) % drawnViews.length]?.view || "front";
+                onSelectView(nextView);
+              }}
+            >
+              Switch drawn view ({selectedView})…
+            </button>
+          )}
         </div>
       </details>
 

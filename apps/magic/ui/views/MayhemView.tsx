@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { executeCommand } from "../api";
 import "../mayhem.css";
 
-// The Mayhem evidence surface: reads saved analyzer reports and the logs the runtimes and
-// gates already write. Opening this view never runs an analyzer and never polls.
+// The Mayhem evidence surface: reads the logs the runtimes and gates already write.
+// Opening this view never polls.
 
 interface LogSource {
   name: string;
@@ -16,7 +16,6 @@ interface LogSource {
 
 interface Evidence {
   root?: string;
-  report?: { error?: string; tools?: unknown[] };
   logs?: LogSource[];
 }
 
@@ -67,7 +66,6 @@ export const MayhemView: React.FC<{ onToast: (message: string) => void }> = ({ o
       </aside>
       <main className="mayhem-main">
         <h2 className="mayhem-heading">{source?.name ?? "Mayhem"}</h2>
-        {data?.report?.error && <p className="muted">Analyzer report · {data.report.error}</p>}
         {source && (
           <>
             <p className="muted mayhem-note" >

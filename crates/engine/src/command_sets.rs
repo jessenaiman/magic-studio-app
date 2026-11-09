@@ -31,13 +31,8 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"video.export"
             | b"video.preview"
             | b"scribbles.generate"
-            | b"scribbles.new"
-            | b"scribbles.image"
-            | b"scribbles.sheet"
-            | b"scribbles.poses"
-            | b"scribbles.actions"
-            | b"scribbles.layers"
-            | b"scribbles.custom"
+            | b"scribbles.video"
+            | b"scribbles.svg"
             | b"character.mark"
             | b"character.cut"
             | b"character.rig"
@@ -308,7 +303,7 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             "Run Native EffectCraft Commands (.ecproj)",
             ["Animation"],
             None,
-            "{\"path\":\".ecproj path\",\"id\":\"comp.settings|comp.workArea|layer.newText|layer.newShape|edit.splitLayer|edit.history.list\",\"params\":{},\"save\":true}",
+            "{\"path\":\".ecproj path\",\"id\":\"<any EffectCraft command id>\",\"params\":{},\"save\":true}",
             always,
             crate::workspace::cmd_effect_exec
         ),
@@ -776,6 +771,27 @@ fn specs_character() -> Vec<CommandSpec> {
             always,
             crate::cmd::character::cmd_character_save_marks
         ),
+        query!(
+            "character.keys",
+            "A Rig's Layers, Keyframes and Sampled Curves",
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"action\":\"optional; default the whole comp\"}",
+            crate::cmd::character::keys::cmd_character_keys
+        ),
+        query!(
+            "character.path",
+            "A Character's Motion Path",
+            "{\"character\":\"id\",\"view\":\"front|back|side\"}",
+            crate::cmd::character::path::cmd_character_path
+        ),
+        cmd!(
+            "character.save_path",
+            "Save a Character's Motion Path",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"points\":[[0,0],[10,10]],\"duration\":2.5,\"size_start\":100,\"size_end\":100}",
+            always,
+            crate::cmd::character::path::cmd_character_save_path
+        ),
         query!("character.list", "Characters and Their App Files", "{}", crate::cmd::character::cmd_character_list),
         cmd!(
             "animation.open",
@@ -868,6 +884,105 @@ fn specs_character() -> Vec<CommandSpec> {
             "{\"character\":\"id\",\"view\":\"front|back|side\",\"app\":\"effectcraft|photocraft|blender\"}",
             crate::cmd::character::cmd_character_open
         ),
+        cmd!(
+            "character.puppet.addPin",
+            "Add Puppet Pin (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\",\"kind\":\"position|advanced|bend|starch|overlap\",\"position\":[x,y],\"name\":\"optional pin name\"}",
+            always,
+            crate::cmd::character::cmd_puppet_add_pin
+        ),
+        cmd!(
+            "character.puppet.movePin",
+            "Move Puppet Pin (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\",\"pin\":\"pin name or index\",\"position\":[x,y]}",
+            always,
+            crate::cmd::character::cmd_puppet_move_pin
+        ),
+        cmd!(
+            "character.puppet.removePin",
+            "Delete Puppet Pin (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\",\"pin\":\"pin name or index\"}",
+            always,
+            crate::cmd::character::cmd_puppet_remove_pin
+        ),
+        cmd!(
+            "character.expression.set",
+            "Set Expression on Property (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\",\"path\":\"property path e.g. transform/position\",\"expression\":\"JavaScript expression\"}",
+            always,
+            crate::cmd::character::cmd_expression_set
+        ),
+        cmd!(
+            "character.keyframe.easyEase",
+            "Easy Ease Keyframes (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\",\"prop\":\"position|rotation|scale|anchor|opacity\"}",
+            always,
+            crate::cmd::character::cmd_keyframe_easy_ease
+        ),
+        cmd!(
+            "character.keyframe.velocity",
+            "Set Keyframe Velocity (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\",\"prop\":\"position|rotation|scale|anchor|opacity\",\"influenceIn\":33.33,\"influenceOut\":33.33,\"speedIn\":0,\"speedOut\":0}",
+            always,
+            crate::cmd::character::cmd_keyframe_velocity
+        ),
+        cmd!(
+            "character.time.remap",
+            "Enable Time Remapping on Layer (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\"}",
+            always,
+            crate::cmd::character::cmd_time_remap
+        ),
+        cmd!(
+            "character.mask.add",
+            "Add Mask to Layer (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\",\"points\":[[x,y],…],\"closed\":true,\"feather\":0}",
+            always,
+            crate::cmd::character::cmd_mask_add
+        ),
+        cmd!(
+            "character.layer.new3dModel",
+            "Add 3D Model Layer (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"path\":\"model file path\",\"name\":\"optional layer name\"}",
+            always,
+            crate::cmd::character::cmd_layer_new_3d_model
+        ),
+        cmd!(
+            "character.layer.setBlendMode",
+            "Set Layer Blend Mode (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\",\"mode\":\"blend mode name\"}",
+            always,
+            crate::cmd::character::cmd_layer_set_blend_mode
+        ),
+        cmd!(
+            "character.layer.setParent",
+            "Parent Layer to Another Layer (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"layer\":\"layer name or id\",\"parent\":\"parent layer name or id\",\"compensate\":true}",
+            always,
+            crate::cmd::character::cmd_layer_set_parent
+        ),
         query!(
             "character.tripo.catalog",
             "Tripo 3D Breakout Templates, Rig Specs and 101 Animation Presets",
@@ -904,87 +1019,72 @@ fn specs_character() -> Vec<CommandSpec> {
     ]
 }
 
-/// Scribbles: structured drawing requests, one template per kind of animation asset.
+/// Scribbles: Google Flow (Moppet Maker) app-window launcher, handoff asset ingestor, animated SVG builder, and video clip generator.
 fn specs_scribbles() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "fidget.prepare",
-            "Prepare Final Drawing Prompt and References (Fidget)",
-            r#"{"kind":"new|image|sheet|poses|actions|custom (default custom)","prompt":"character or drawing","reference":"image path or array","notes":"optional","action":"walk|run|jump|wave|turn|sing","provider":"optional","model":"optional","character":"optional id","project":"optional .magic","name":"optional","timeout_s":900}"#,
-            crate::fidget::cmd_fidget_prepare
+        cmd!(
+            "scribbles.open",
+            "Open Scribbles (Google Flow Moppet Maker)",
+            ["Scribbles"],
+            None,
+            r#"{"url":"optional Google Flow URL (defaults to Moppet Maker)","ingest":true,"character":"optional character id"}"#,
+            always,
+            crate::scribbles::cmd_scribbles_open
+        ),
+        cmd!(
+            "scribbles.ingest",
+            "Ingest Moppet Maker Downloads into Project (Scribbles)",
+            ["Scribbles"],
+            None,
+            r#"{"dir":"optional downloads directory (defaults to ~/Downloads)","character":"optional character id"}"#,
+            always,
+            crate::scribbles::cmd_scribbles_ingest
         ),
         cmd!(
             "scribbles.generate",
-            "Generate Final Drawing (Scribbles)",
+            "Generate Image via Flow or Open Moppet Maker (Scribbles)",
             ["Scribbles"],
             None,
-            r#"{"prompt":"final drawing instructions (unchanged)","references":["optional project PNG paths; max 5"],"provider":"optional; settings scribbles.provider or image provider","model":"optional; settings scribbles.model or gpt-6-luna","project":"optional .magic","character":"optional id","transparent_background":true,"timeout_s":900,"name":"optional","fidget":"optional preparation metadata"}"#,
+            r#"{"prompt":"optional drawing prompt (if omitted, opens Moppet Maker)","provider":"optional; defaults to flow","character":"optional id","name":"optional"}"#,
             always,
             crate::scribbles::cmd_scribbles_generate
         ),
-        query!("scribbles.templates", "Scribbles Templates", "{}", crate::scribbles::cmd_scribbles_templates),
+        query!("scribbles.templates", "Scribbles Flow Status", "{}", crate::scribbles::cmd_scribbles_templates),
         cmd!(
-            "scribbles.new",
-            "New Character (Scribbles)",
+            "scribbles.video",
+            "Generate Short Video Clip in Flow (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            "{\"prompt\":\"motion description\",\"ingredient\":\"optional Flow asset title or recent\",\"model\":\"optional; Omni 1.2 Flash or Veo 3.1 - Lite\",\"aspect\":\"optional; 16:9 or 9:16\",\"duration\":\"optional; 4s|6s|8s|10s\",\"resolution\":\"optional; 360p|720p\",\"name\":\"optional clip name\"}",
             always,
-            crate::scribbles::cmd_scribbles_new
+            crate::scribbles::cmd_scribbles_video
         ),
         cmd!(
-            "scribbles.image",
-            "Redraw for Animation (Scribbles)",
+            "scribbles.svg",
+            "Build Animated SVG & Sprite Cycle from 2x2 Pose Sheet (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            "{\"sheet\":\"path to 2x2 pose sheet PNG\",\"character\":\"optional character id\",\"action\":\"optional action name (wave|walk|sing)\",\"fps\":6}",
             always,
-            crate::scribbles::cmd_scribbles_image
+            crate::scribbles::cmd_scribbles_svg
         ),
         cmd!(
-            "scribbles.sheet",
-            "Turnaround Sheet (Scribbles)",
+            "scribbles.reassemble",
+            "Reassemble Chroma-Green Parts Sheet into Rigged Layers & parts.json in Rust (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            "{\"character\":\"character id\",\"view\":\"optional; front|side|back\",\"sheet\":\"optional path to parts-sheet.png\",\"rig\":true,\"action\":\"optional; idle|walk_down|walk_right\"}",
             always,
-            crate::scribbles::cmd_scribbles_sheet
+            crate::scribbles::cmd_scribbles_reassemble
         ),
         cmd!(
-            "scribbles.poses",
-            "Pose Sheet (Scribbles)",
+            "scribbles.blender",
+            "Build Articulated Blender Rig (.blend) from Reassembled Parts (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            "{\"character\":\"character id\",\"view\":\"optional; front|side|back\",\"open\":false}",
             always,
-            crate::scribbles::cmd_scribbles_poses
-        ),
-        cmd!(
-            "scribbles.actions",
-            "Action Frames (Scribbles)",
-            ["Scribbles"],
-            None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
-            always,
-            crate::scribbles::cmd_scribbles_actions
-        ),
-        cmd!(
-            "scribbles.layers",
-            "Overlapping Layers from One Image (Scribbles)",
-            ["Scribbles"],
-            None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
-            always,
-            crate::scribbles::cmd_scribbles_layers
-        ),
-        cmd!(
-            "scribbles.custom",
-            "Custom Drawing (Scribbles)",
-            ["Scribbles"],
-            None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
-            always,
-            crate::scribbles::cmd_scribbles_custom
+            crate::scribbles::cmd_scribbles_blender
         ),
     ]
 }
@@ -992,18 +1092,6 @@ fn specs_scribbles() -> Vec<CommandSpec> {
 /// The film in FilmCraft: watch a preview in Studio, check frames, export, or edit in FilmCraft.
 fn specs_storyboard() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "storyboard.toc",
-            "DesignCraft Storyboard Contents",
-            "{\"path\":\"optional storyboard.designcraft\"}",
-            crate::cmd::storyboard::cmd_storyboard_toc
-        ),
-        query!(
-            "storyboard.backgrounds",
-            "Storyboard and Project Backdrops",
-            "{\"path\":\"optional storyboard.designcraft\"}",
-            crate::cmd::storyboard::cmd_storyboard_backgrounds
-        ),
         cmd!(
             "storyboard.open",
             "Open Storyboard in DesignCraft with Live Control",
@@ -1023,12 +1111,6 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             crate::cmd::storyboard::cmd_storyboard_new
         ),
         query!(
-            "storyboard.scenes",
-            "Storyboard Scenes and Their Text Fields",
-            "{\"path\":\"optional storyboard.designcraft\"}",
-            crate::cmd::storyboard::cmd_storyboard_scenes
-        ),
-        query!(
             "storyboard.cues",
             "The Song's Verse and Chorus, With Each Line's Timing",
             "{\"lyrics\":\"canonical lyrics sheet .json\",\"transcript\":\"optional transcript .json for timings\",\"sections\":\"optional comma list; default every verse* and chorus* section\",\"per\":1}",
@@ -1043,15 +1125,6 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             always,
             crate::cmd::storyboard::cmd_storyboard_lyrics
         ),
-        cmd!(
-            "storyboard.run",
-            "Run a Command Script Against the Storyboard",
-            ["Storyboard"],
-            None,
-            "{\"path\":\"optional storyboard.designcraft\",\"script\":\"script text\",\"script_file\":\"optional script file\"}",
-            always,
-            crate::cmd::storyboard::cmd_storyboard_run
-        ),
         query!(
             "storyboard.check",
             "Fields Still Holding the Template Default, With the Command to Fill Each",
@@ -1060,28 +1133,16 @@ fn specs_storyboard() -> Vec<CommandSpec> {
         ),
         query!(
             "storyboard.pages",
-            "Storyboard Pages, Their Archetype, Section and Slots",
-            "{\"path\":\"optional storyboard.designcraft\"}",
+            "Storyboard Page Summary; One Page in Full With `page`",
+            "{\"path\":\"optional storyboard.designcraft\",\"page\":\"optional index: that page's slots\",\"label\":\"optional slot name on `page`\",\"full\":\"true: every page's slots\"}",
             crate::cmd::storyboard::cmd_storyboard_pages
-        ),
-        query!(
-            "storyboard.slots",
-            "The Labelled Slots of One Storyboard Page",
-            "{\"path\":\"optional\",\"page\":0,\"label\":\"optional slot name\",\"scene\":1}",
-            crate::cmd::storyboard::cmd_storyboard_slots
-        ),
-        query!(
-            "storyboard.link",
-            "Chat Link for a Storyboard Page or Slot",
-            "{\"page\":0,\"label\":\"optional slot name\"}",
-            crate::cmd::storyboard::cmd_storyboard_link
         ),
         cmd!(
             "storyboard.set",
-            "Edit a Page: Text, Images, Contact Strip",
+            "Edit One or More Pages in a Single Batch: Text, Images, Contact Strip",
             ["Storyboard"],
             None,
-            "{\"path\":\"optional\",\"page\":0,\"label\":\"optional slot name\",\"scene\":1,\"fields\":{\"label\":\"text for the slot, e.g. running_title, cue, world_heading\"},\"images\":{\"label\":\"file for hero_image, source_image, result_image, sketch_left, sketch_right\"},\"refs\":[\"1 to 12 image files for the contact strip\"]}",
+            "{\"path\":\"optional\",\"page\":0,\"scene\":1,\"label\":\"optional shorthand slot\",\"text\":\"optional shorthand text\",\"image\":\"optional shorthand image path\",\"fields\":{\"label\":\"text for the slot\"},\"images\":{\"label\":\"file for hero_image, source_image, result_image, sketch_left, sketch_right\"},\"refs\":[\"1 to 12 image files for the contact strip\"],\"pages\":[{\"page\":0,\"fields\":{},\"images\":{},\"refs\":[]}]}",
             always,
             crate::cmd::storyboard::cmd_storyboard_set
         ),
@@ -1096,21 +1157,12 @@ fn specs_storyboard() -> Vec<CommandSpec> {
         ),
         cmd!(
             "storyboard.section",
-            "Add a Section (Parent Page) and Apply It",
+            "Add or Rename a Section (Parent Page) and Apply It",
             ["Storyboard"],
             None,
-            "{\"path\":\"optional\",\"name\":\"B\",\"based_on\":\"A-Parent\",\"pages\":[0,1]}",
+            "{\"path\":\"optional\",\"name\":\"B or B-Chorus\",\"based_on\":\"A-Parent\",\"page\":4,\"pages\":[0,1]}",
             always,
             crate::cmd::storyboard::cmd_storyboard_section
-        ),
-        cmd!(
-            "storyboard.overlay",
-            "Overlay New Art, Keeping the Original Underneath",
-            ["Storyboard"],
-            None,
-            "{\"path\":\"optional\",\"page\":0,\"slot\":\"hero_image\",\"image\":\"/absolute/new.png\",\"layer\":\"Revision\",\"hide_original\":true}",
-            always,
-            crate::cmd::storyboard::cmd_storyboard_overlay
         ),
         query!(
             "storyboard.thumbnail",
@@ -1120,8 +1172,8 @@ fn specs_storyboard() -> Vec<CommandSpec> {
         ),
         query!(
             "storyboard.export",
-            "Export Storyboard to PDF and/or PNG Spreads",
-            "{\"path\":\"optional\",\"pdf\":\"/absolute/storyboard.pdf\",\"png_dir\":\"/absolute/dir\",\"scale\":1.0}",
+            "Export Storyboard to PDF, DeckCraft/PPTX, and/or PNG Spreads",
+            "{\"path\":\"optional\",\"pdf\":\"/absolute/storyboard.pdf\",\"pptx\":\"/absolute/storyboard.pptx\",\"png_dir\":\"/absolute/dir\",\"scale\":1.0}",
             crate::cmd::storyboard::cmd_storyboard_export
         ),
     ]

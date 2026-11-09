@@ -1,18 +1,16 @@
 #!/bin/sh
-# Pre-commit hook: enforces full native quality gates (fmt, clippy, tests, layers).
-# Blocks commit on any failure, forcing agents and developers to resolve issues before committing.
+# Pre-commit hook: fast local formatter check only.
+# Full gates (fmt, layers, clippy, ui) run in CI via `cargo xtask ci`, not on commit.
 #
 # To bypass: git commit --no-verify
 
 set -e
 
-# Nothing the gates build or read changed (docs, scripts, web UI assets): skip the slow part.
-if ! git diff --cached --name-only \
-    | grep -qE '\.(rs|toml|lock)$|^\.githooks/|^\.github/workflows/|^docs/control-protocol\.md$'; then
-    echo "No Rust-affecting changes staged; skipping cargo xtask ci (CI still runs it)."
-    exit 0
+# Only Rust-affecting files care about rustfmt; other commits skip entirely.
+if git diff --cached --name-only \
+    | grep -qE '\.(rs|toml|lock)$|^xtask/|^crates/|^apps/magic.*\.rs$'; then
+    echo "Running format check (cargo fmt --check)..."
+    cargo fmt --check
 fi
 
-echo "Running Magic Studio native quality gates (cargo xtask ci)..."
-cargo xtask ci
-
+echo "Pre-commit ok (full gates run in CI)."

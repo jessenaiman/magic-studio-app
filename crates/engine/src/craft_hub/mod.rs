@@ -120,8 +120,11 @@ fn target_token(target: CraftTarget) -> Option<String> {
 /// Runs a command in a Craft app that lives in this process, or `None` if it does not have `doc`
 /// open.
 pub type FilmHost = Box<dyn Fn(&Path, &str, &Value) -> Option<std::result::Result<Value, String>> + Send + Sync>;
+pub type OpenHost = Box<dyn Fn(&Path) -> std::result::Result<Value, String> + Send + Sync>;
 
 static FILM_HOST: std::sync::OnceLock<FilmHost> = std::sync::OnceLock::new();
+static EFFECT_HOST: std::sync::OnceLock<FilmHost> = std::sync::OnceLock::new();
+static EFFECT_OPEN_HOST: std::sync::OnceLock<OpenHost> = std::sync::OnceLock::new();
 
 pub struct CraftHub;
 
@@ -137,16 +140,28 @@ impl CraftHub {
         let _ = FILM_HOST.set(host);
     }
 
-    /// Runs `command` in the in-process FilmCraft when it has `doc` open, saving afterwards when
+    /// Registers the EffectCraft that runs inside this process, so effect/rig/character commands reach its window.
+    pub fn set_effect_host(host: FilmHost) {
+        let _ = EFFECT_HOST.set(host);
+    }
+
+    /// Registers the in-process EffectCraft window opener (`effectcraft-ui-egui` via `eframe`).
+    pub fn set_effect_open_host(host: OpenHost) {
+        let _ = EFFECT_OPEN_HOST.set(host);
+    }
+
+    /// Runs `command` in the in-process FilmCraft or EffectCraft when it has `doc` open, saving afterwards when
     /// asked. `None` when it does not, so the caller can use the file on disk.
     pub(crate) fn in_process(target: CraftTarget, doc: Option<&Path>, command: &str, params: &Value, save: bool) -> Option<Result<Value>> {
-        if target != CraftTarget::Film {
-            return None;
-        }
-        let (host, doc) = (FILM_HOST.get()?, doc?);
+        let (host, app_label) = match target {
+            CraftTarget::Film => (FILM_HOST.get()?, "FilmCraft"),
+            CraftTarget::Effect => (EFFECT_HOST.get()?, "EffectCraft"),
+            _ => return None,
+        };
+        let doc = doc?;
         let result = host(doc, command, params)?.and_then(|value| {
             if save {
-                host(doc, "file.save", &json!({})).unwrap_or_else(|| Err("FilmCraft closed before saving".into()))?;
+                host(doc, "file.save", &json!({})).unwrap_or_else(|| Err(format!("{app_label} closed before saving")))?;
             }
             Ok(value)
         });
@@ -198,12 +213,19 @@ impl CraftHub {
         }
     }
 
-    /// Opens `file` in the installed app on its control port, launching the app if it is not
-    /// running, so later commands reach that window through [`CraftHub::try_live`].
+    /// Opens `file` in the installed app on its control port (or the in-process `eframe` window
+    /// when registered), launching the app if it is not running, so later commands reach that
+    /// window through [`CraftHub::try_live`].
     pub fn open_live(target: CraftTarget, file: &Path) -> Result<Value> {
         let addr = target_addr(target)?;
         if TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok() {
             return Self::live_execute(target, None, "file.open", &json!({"path": file}));
+        }
+        if target == CraftTarget::Effect
+            && let Some(open_in_proc) = EFFECT_OPEN_HOST.get()
+            && let Ok(val) = open_in_proc(file)
+        {
+            return Ok(val);
         }
         Command::new(crate::workspace::resolve_tool(target.name()))
             .arg("--control")
@@ -410,6 +432,79 @@ fn call_tcp_at(
         Ok(val)
     });
     TcpOutcome::Connected(result)
+}
+
+/// Run `steps` against the live app when it is running AND has `doc` open (in-process or via
+/// loopback `--control`), saving the open document when `save` is true.
+pub(crate) fn try_live_batch(target: CraftTarget, doc: &Path, steps: &[(&str, Value)], save: bool) -> Option<Result<Vec<Value>>> {
+    if let Some((host, app_label)) = match target {
+        CraftTarget::Film => FILM_HOST.get().map(|h| (h, "FilmCraft")),
+        CraftTarget::Effect => EFFECT_HOST.get().map(|h| (h, "EffectCraft")),
+        _ => None,
+    } {
+        let mut results = Vec::with_capacity(steps.len());
+        for (idx, (id, params)) in steps.iter().enumerate() {
+            match host(doc, id, params) {
+                Some(Ok(v)) => results.push(v),
+                Some(Err(e)) => return Some(Err(EngineError::CommandFailed((*id).to_string(), e))),
+                None if idx == 0 => break,
+                None => return Some(Err(EngineError::CommandFailed((*id).to_string(), format!("{app_label} closed during batch")))),
+            }
+        }
+        if results.len() == steps.len() {
+            if save {
+                match host(doc, "file.save", &json!({})) {
+                    Some(Ok(_)) => {}
+                    Some(Err(e)) => return Some(Err(EngineError::CommandFailed("file.save".into(), e))),
+                    None => return Some(Err(EngineError::CommandFailed("file.save".into(), format!("{app_label} closed before saving")))),
+                }
+            }
+            return Some(Ok(results));
+        }
+    }
+
+    let addr = target_addr(target).ok()?;
+    let token = target_token(target);
+    let Ok(stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(250)) else {
+        return None;
+    };
+    let setup = (|| -> Result<ControlConn> {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(30)))
+            .map_err(|e| EngineError::ExternalTool(target.name().into(), format!("set read timeout: {e}")))?;
+        stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| EngineError::ExternalTool(target.name().into(), format!("set write timeout: {e}")))?;
+        let writer = stream.try_clone().map_err(|e| EngineError::ExternalTool(target.name().into(), format!("clone stream: {e}")))?;
+        let inline_token = if target == CraftTarget::Film { token.as_deref().map(str::to_owned) } else { None };
+        let mut conn = ControlConn { target, inline_token, writer, reader: BufReader::new(stream), next_id: 1 };
+        if matches!(target, CraftTarget::Photo | CraftTarget::Texture)
+            && let Some(tok) = token.as_deref()
+        {
+            conn.send_raw("auth", json!({"token": tok}))?;
+        }
+        Ok(conn)
+    })();
+    let mut conn = match setup {
+        Ok(c) => c,
+        Err(e) => return Some(Err(e)),
+    };
+    match conn.has_document_open(doc) {
+        Ok(true) => {}
+        Ok(false) => return None,
+        Err(e) => return Some(Err(e)),
+    }
+    let result = (|| -> Result<Vec<Value>> {
+        let mut out = Vec::with_capacity(steps.len());
+        for (id, params) in steps {
+            out.push(conn.execute_engine(id, params)?);
+        }
+        if save {
+            conn.save_open_document(doc)?;
+        }
+        Ok(out)
+    })();
+    Some(result)
 }
 
 fn call_cli_with_save(target: CraftTarget, doc: Option<&Path>, command: &str, params: &Value, save: bool) -> Result<Value> {

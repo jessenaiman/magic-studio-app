@@ -60,14 +60,32 @@ function getCharacterThumb(c: CharacterSummary): string | null {
 }
 
 function getCharacterBadge(c: CharacterSummary): { label: string; ready: boolean } {
+  const style = c.animation_style;
+  const spriteCount = Array.isArray(c.sprites) ? c.sprites.length : 0;
+  const has3D = Boolean(c.tripo_3d && (c.tripo_3d as { available?: boolean }).available);
+  if (style === "rig_3d") {
+    return { label: "3D Model · Anim ✓", ready: true };
+  }
+  if (style === "cutout_2_5d") {
+    return {
+      label: has3D
+        ? `2.5D/3D Rig · ${spriteCount || 1} clips ✓`
+        : spriteCount > 0
+          ? `2.5D Rig · ${spriteCount} cycles ✓`
+          : "2.5D Cutout Rig ✓",
+      ready: true,
+    };
+  }
+  if (style === "sprite_2d") {
+    return { label: `2D Sprite · ${spriteCount} cycles ✓`, ready: true };
+  }
   const hasRig =
     Array.isArray(c.views) &&
     c.views.some((v) => typeof v === "object" && v !== null && Boolean((v as CharacterViewSummary).ecproj));
-  const spriteCount = Array.isArray(c.sprites) ? c.sprites.length : 0;
-  if (hasRig && spriteCount > 0) return { label: `Rig · ${spriteCount} cycles ✓`, ready: true };
-  if (hasRig) return { label: "Rigged ✓", ready: true };
-  if (spriteCount > 0) return { label: `${spriteCount} cycles`, ready: true };
-  if (c.tripo_3d && (c.tripo_3d as { available?: boolean }).available) {
+  if (hasRig && spriteCount > 0) return { label: `2.5D Rig · ${spriteCount} cycles ✓`, ready: true };
+  if (hasRig) return { label: "2.5D Rig ✓", ready: true };
+  if (spriteCount > 0) return { label: `2D Sprite · ${spriteCount} cycles`, ready: true };
+  if (has3D) {
     return { label: "3D Rig · GLB", ready: true };
   }
   return { label: "Cutout", ready: false };

@@ -21,6 +21,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+base64 = "0.23"
 
 # Craft engines and shared Craft libraries called directly in-process
 craft-ai-client = { workspace = true }
@@ -30,20 +31,10 @@ craft-audio = { workspace = true }
 craft-doc = { workspace = true }
 craft-docpath = { workspace = true }
 craft-media = { workspace = true }
+craft-scribbles = { workspace = true }
 craft-settings = { workspace = true }
 craft-update = { workspace = true }
-designcraft-engine = { workspace = true }
-designcraft-render = { workspace = true }
-effectcraft-engine = { workspace = true }
-effectcraft-host = { workspace = true }
-filmcraft-audio-dsp = { workspace = true }
-filmcraft-captions = { workspace = true }
-filmcraft-engine = { workspace = true }
-filmcraft-media = { workspace = true }
 filmcraft-time = { workspace = true }
-photocraft-engine = { workspace = true }
-texturecraft-formats = { workspace = true }
-vectorcraft-engine = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { workspace = true }

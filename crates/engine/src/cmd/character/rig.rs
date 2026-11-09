@@ -44,6 +44,9 @@ fn record_rest(view: &View, project: &std::path::Path, mut parts: Value) -> Resu
     parts["rest_position"] = Value::Object(rest);
     // A fresh rig has no keys, so its action library starts empty.
     parts["actions"] = json!({});
+    if parts["animation_style"].is_null() {
+        parts["animation_style"] = json!("cutout_2_5d");
+    }
     view.write_parts(&parts)
 }
 

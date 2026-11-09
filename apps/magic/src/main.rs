@@ -151,6 +151,7 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
         "ui.resize" => return resize(app, &params),
         "ui.dialog.state" | "ui.dialog.override" => return dialogs::control(app, id, &params),
         "ui.filmcraft" => return studio::control(&params),
+        "ui.effectcraft" => return studio::control_effect(&params),
         "video.open" => return studio::open_project(app),
         "ui.keymap.press" => return keymap::control(app, &params),
         "ui.feedback" | "ui.look" => return ui_request(app, "ui.inspect", params),
@@ -329,6 +330,7 @@ fn main() {
         ])
         .setup(move |app| {
             studio::install_film_host();
+            studio::install_effect_host();
             if let Some(path) = &cli.project {
                 dispatch(app.handle(), "project.open", json!({"path":path}), false)?;
             }

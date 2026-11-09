@@ -6,8 +6,11 @@
 
 mod action;
 pub(crate) mod cut;
+pub mod effect;
+pub mod keys;
 mod mark;
 mod meta;
+pub mod path;
 pub mod review;
 mod rig;
 mod shot;
@@ -21,6 +24,10 @@ use crate::{EngineError, Result, Session};
 
 pub use action::{cmd_character_action, cmd_character_actions};
 pub use cut::cmd_character_cut;
+pub use effect::{
+    cmd_expression_set, cmd_keyframe_easy_ease, cmd_keyframe_velocity, cmd_layer_new_3d_model, cmd_layer_set_blend_mode, cmd_layer_set_parent, cmd_mask_add,
+    cmd_puppet_add_pin, cmd_puppet_move_pin, cmd_puppet_remove_pin, cmd_time_remap,
+};
 pub use mark::cmd_character_mark;
 pub use meta::{cmd_character_meta, cmd_character_save_marks};
 pub use rig::cmd_character_rig;
@@ -537,10 +544,58 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
         let tripo_3d = tripo::inspect_character_3d(s, &project_dir, &canonical_id);
         let sprites = sprite_summaries(&folder);
         if !views.is_empty() || !sprites.is_empty() || tripo_3d["available"].as_bool() == Some(true) {
-            out.push(json!({"id": canonical_id, "name": id, "views": views, "sprites": sprites, "tripo_3d": tripo_3d}));
+            let (animation_style, animation_styles) = classify_animation_style(&views, &sprites, &tripo_3d);
+            out.push(json!({"id": canonical_id, "name": id, "animation_style": animation_style, "animation_styles": animation_styles,
+                "views": views, "sprites": sprites, "tripo_3d": tripo_3d}));
         }
     }
     Ok(json!({"ok": true, "characters": out}))
+}
+
+/// Determine a character's primary `animation_style` (`"sprite_2d"`, `"cutout_2_5d"`, `"rig_3d"`, or `"cutout"`)
+/// and the list of `animation_styles` present on disk.
+pub(crate) fn classify_animation_style(views: &[Value], sprites: &[Value], tripo_3d: &Value) -> (&'static str, Vec<&'static str>) {
+    let has_2_5d_rig = views.iter().any(|v| {
+        v["rigged"].as_bool() == Some(true)
+            || v["ecproj"].as_bool() == Some(true)
+            || v["ecproj"].is_string()
+            || v["cut"].as_bool() == Some(true)
+            || v["psd"].as_bool() == Some(true)
+            || v["marked"].as_bool() == Some(true)
+            || v["parts"].as_bool() == Some(true)
+            || v["parts"].is_array()
+    });
+    let has_2d_sprites = sprites.iter().any(|s| s["animation_style"].as_str() == Some("sprite_2d"));
+    let has_any_sprites = !sprites.is_empty();
+    let has_3d = tripo_3d["available"].as_bool() == Some(true);
+    let tripo_is_2_5d = tripo_3d["animation_style"].as_str() == Some("cutout_2_5d");
+
+    let mut styles = Vec::new();
+    if has_2_5d_rig || (has_3d && tripo_is_2_5d) {
+        styles.push("cutout_2_5d");
+    }
+    if has_2d_sprites || (!has_2_5d_rig && has_any_sprites) {
+        styles.push("sprite_2d");
+    }
+    if has_3d {
+        styles.push("rig_3d");
+    }
+    if styles.is_empty() {
+        styles.push("cutout");
+    }
+
+    let primary = if has_3d && !tripo_is_2_5d && !has_2_5d_rig {
+        "rig_3d"
+    } else if has_2_5d_rig {
+        "cutout_2_5d"
+    } else if has_2d_sprites || has_any_sprites {
+        "sprite_2d"
+    } else if has_3d {
+        "rig_3d"
+    } else {
+        "cutout"
+    };
+    (primary, styles)
 }
 
 /// Render one frame of the rigged character with EffectCraft.
@@ -655,8 +710,10 @@ pub(crate) fn sprite_summaries(folder: &Path) -> Vec<Value> {
             let meta: Value = std::fs::read_to_string(dir.join("sprite.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
             let fps = meta["fps"].as_u64().unwrap_or(24);
             let duration = meta["cycle_seconds"].as_f64().unwrap_or_else(|| frames.len() as f64 / fps.max(1) as f64);
+            let style = meta["animation_style"].as_str().unwrap_or("sprite_2d");
             Some(json!({
                 "name": dir.file_name().map(|n| n.to_string_lossy().into_owned()),
+                "animation_style": style,
                 "ecproj": ecproj,
                 "preview": newest(&dir.join("clips"), "gif"),
                 "frames": frames,
@@ -707,6 +764,7 @@ pub(crate) fn sprite_summaries(folder: &Path) -> Vec<Value> {
             }
             out.push(json!({
                 "name": cycle_name,
+                "animation_style": "cutout_2_5d",
                 "ecproj": ecproj,
                 "preview": newest(&vdir.join("clips"), "gif"),
                 "frames": frames,
@@ -736,7 +794,10 @@ pub fn cmd_animation_view(s: &mut Session, p: &Value) -> Result<Value> {
     let list = cmd_character_list(s, &json!({}))?;
     let all = list["characters"].as_array().cloned().unwrap_or_default();
     let views_of = |c: &Value| c["views"].as_array().into_iter().flatten().filter_map(|v| v["view"].as_str().map(str::to_owned)).collect::<Vec<_>>();
-    let characters: Vec<Value> = all.iter().map(|c| json!({"id": c["id"], "views": views_of(c)})).collect();
+    let characters: Vec<Value> = all
+        .iter()
+        .map(|c| json!({"id": c["id"], "animation_style": c["animation_style"], "animation_styles": c["animation_styles"], "views": views_of(c)}))
+        .collect();
     let documents = animation_documents(s)?;
     let chosen = p["character"]
         .as_str()
@@ -760,7 +821,7 @@ pub fn cmd_animation_view(s: &mut Session, p: &Value) -> Result<Value> {
         .filter(|path| path.extension().is_some_and(|ext| ext == "mov" || ext == "mp4"))
         .max_by_key(|path| std::fs::metadata(path).and_then(|m| m.modified()).ok());
     Ok(
-        json!({"ok": true, "characters": characters, "documents": documents, "selected": {"character": id, "view": view, "time": time, "frame": frame, "clip": clip, "sprites": character["sprites"]}}),
+        json!({"ok": true, "characters": characters, "documents": documents, "selected": {"character": id, "view": view, "animation_style": character["animation_style"], "animation_styles": character["animation_styles"], "time": time, "frame": frame, "clip": clip, "sprites": character["sprites"]}}),
     )
 }
 

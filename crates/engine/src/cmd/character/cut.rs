@@ -281,6 +281,9 @@ pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
         parts["silhouette_svg"] = json!(svg);
         parts["silhouette_points"] = json!(silhouette_pts.len());
     }
+    if parts["animation_style"].is_null() {
+        parts["animation_style"] = json!("cutout_2_5d");
+    }
     view.write_parts(&parts)?;
     let mut reply = json!({"ok": true, "psd": psd, "pcraft": pcraft, "layers": bounds,
         "next": format!("character.rig character={} view={}", view.id, view.view)});

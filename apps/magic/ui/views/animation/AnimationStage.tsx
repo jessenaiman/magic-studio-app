@@ -1,5 +1,5 @@
 import React from "react";
-import { CharacterPart, CharacterSpriteSummary, executeCommand, fileUrl } from "../../api";
+import { AnimationStyle, CharacterPart, CharacterSpriteSummary, executeCommand, fileUrl } from "../../api";
 
 export type SpriteAction = CharacterSpriteSummary;
 
@@ -15,12 +15,16 @@ export interface BoneNode {
 interface AnimationStageProps {
   selectedCharId: string;
   selectedView: string;
+  animationStyle: AnimationStyle;
   selectedSprite: SpriteAction | null;
   activeActionName: string;
   sprites: SpriteAction[];
   onSelectSprite: (sprite: SpriteAction | null) => void;
   showMarks: boolean;
   onToggleMarks: () => void;
+  penActive: boolean;
+  onTogglePen: () => void;
+  onAddPathPoint: (point: [number, number]) => void;
   showPath: boolean;
   onTogglePath: () => void;
   showGrid: boolean;
@@ -62,10 +66,14 @@ interface AnimationStageProps {
 export const AnimationStage: React.FC<AnimationStageProps> = ({
   selectedCharId,
   selectedView,
+  animationStyle,
   selectedSprite,
   activeActionName,
   showMarks,
   onToggleMarks,
+  penActive,
+  onTogglePen,
+  onAddPathPoint,
   showPath,
   onTogglePath,
   showGrid,
@@ -134,12 +142,18 @@ export const AnimationStage: React.FC<AnimationStageProps> = ({
 
   const [docW, docH] = drawingSize[0] > 0 && drawingSize[1] > 0 ? drawingSize : [520, 520];
   const captionLabel = selectedSprite?.name || activeActionName || "Rest";
+  const styleBadge =
+    animationStyle === "sprite_2d"
+      ? "2D Sprite"
+      : animationStyle === "rig_3d"
+        ? "3D Rig"
+        : "2.5D Rig";
 
   return (
     <div className="motion-main">
       <div id="motion-stagebar" className="panel-head" data-look="bar">
         <span id="motion-caption" className="title">
-          {selectedCharId} ({selectedView}) · {captionLabel}
+          {selectedCharId} · {styleBadge} · {captionLabel}
         </span>
 
         <div className="panel-actions">
@@ -163,13 +177,29 @@ export const AnimationStage: React.FC<AnimationStageProps> = ({
             3D View
           </button>
           <button
-            id="motion-pen"
+            id="motion-marks"
             type="button"
             className="icon"
             aria-pressed={showMarks}
             title="Show / edit part outlines & joints"
             aria-label="Edit part marks"
             onClick={onToggleMarks}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="12" cy="5" r="2.5" />
+              <circle cx="5" cy="19" r="2.5" />
+              <circle cx="19" cy="19" r="2.5" />
+              <path d="M12 7.5v5M12 12.5l-5.5 4.5M12 12.5l5.5 4.5" />
+            </svg>
+          </button>
+          <button
+            id="motion-pen"
+            type="button"
+            className="icon"
+            aria-pressed={penActive}
+            title="Pen · draw a motion path"
+            aria-label="Pen · draw a motion path"
+            onClick={onTogglePen}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M12 20h9" />
@@ -210,7 +240,13 @@ export const AnimationStage: React.FC<AnimationStageProps> = ({
             className="icon"
             title="Fit to stage"
             aria-label="Fit to stage"
-            onClick={() => onChangeZoom(1)}
+            onClick={() => {
+              const canvas = document.getElementById("motion-canvas");
+              const subject = canvas?.querySelector<HTMLElement>(".anim-stage-subject");
+              if (!canvas || !subject?.offsetWidth || !subject.offsetHeight) return;
+              const fit = Math.min(canvas.clientWidth / subject.offsetWidth, canvas.clientHeight / subject.offsetHeight);
+              onChangeZoom(Math.max(0.4, Math.min(2.5, Number(fit.toFixed(2)))));
+            }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
@@ -311,8 +347,16 @@ export const AnimationStage: React.FC<AnimationStageProps> = ({
                 className="anim-skeleton-svg"
                 viewBox={`0 0 ${docW} ${docH}`}
                 preserveAspectRatio="xMidYMid meet"
+                style={{ cursor: penActive ? "crosshair" : undefined }}
+                onClick={(event) => {
+                  if (!penActive) return;
+                  const toDrawing = event.currentTarget.getScreenCTM()?.inverse();
+                  if (!toDrawing) return;
+                  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(toDrawing);
+                  onAddPathPoint([Math.round(point.x), Math.round(point.y)]);
+                }}
               >
-                {showPath && pathPoints.length > 1 && (
+                {showPath && pathPoints.length > 0 && (
                   <g>
                     <polyline
                       fill="none"
@@ -327,7 +371,10 @@ export const AnimationStage: React.FC<AnimationStageProps> = ({
                         <g
                           key={idx}
                           style={{ cursor: "pointer" }}
-                          onClick={() => onSelectPathPoint(idx)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onSelectPathPoint(idx);
+                          }}
                         >
                           <circle
                             cx={pt[0]}

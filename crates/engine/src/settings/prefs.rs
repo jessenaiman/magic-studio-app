@@ -14,11 +14,20 @@ use serde_json::{Value, json};
 use super::schema::{Kind, fields_with_cat};
 use crate::{EngineError, Result};
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProjectPrefs {
     pub root: Option<String>,
     pub characters_root: Option<String>,
+    pub storyboard_template: String,
+    pub storyboard_format: String,
+    pub storyboard_locked: bool,
+}
+
+impl Default for ProjectPrefs {
+    fn default() -> Self {
+        Self { root: None, characters_root: None, storyboard_template: "magic".into(), storyboard_format: "designcraft".into(), storyboard_locked: true }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -267,6 +276,9 @@ impl MagicPrefs {
         match key {
             "project.root" => opt_str_json(&self.project.root),
             "project.characters_root" => opt_str_json(&self.project.characters_root),
+            "project.storyboard_template" => json!(self.project.storyboard_template),
+            "project.storyboard_format" => json!(self.project.storyboard_format),
+            "project.storyboard_locked" => json!(self.project.storyboard_locked),
             "image.provider" => json!(self.image.provider),
             "scribbles.template" => opt_str_json(&self.scribbles.template),
             "scribbles.provider" => opt_str_json(&self.scribbles.provider),
@@ -304,6 +316,9 @@ impl MagicPrefs {
         match key {
             "project.root" => self.project.root = opt_str_from_value(value),
             "project.characters_root" => self.project.characters_root = opt_str_from_value(value),
+            "project.storyboard_template" => self.project.storyboard_template = value.as_str().unwrap_or("magic").to_owned(),
+            "project.storyboard_format" => self.project.storyboard_format = value.as_str().unwrap_or("designcraft").to_owned(),
+            "project.storyboard_locked" => self.project.storyboard_locked = value.as_bool().unwrap_or(true),
             "image.provider" => self.image.provider = value.as_str().unwrap_or("codex").to_owned(),
             "scribbles.template" => self.scribbles.template = opt_str_from_value(value),
             "scribbles.provider" => self.scribbles.provider = opt_str_from_value(value),

@@ -26,12 +26,54 @@ fn fingerprint(p: &std::path::Path) -> Result<String> {
 pub fn cmd_review(s: &mut Session, _: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
     let chars = super::cmd_character_list(s, &json!({}))?;
-    let models: Vec<Value> = chars["characters"].as_array().into_iter().flatten().filter_map(|c| {
+    let mut models = Vec::new();
+    for c in chars["characters"].as_array().into_iter().flatten() {
+        let cid = c["id"].as_str().unwrap_or_default();
+        let name =
+            s.project_assets.iter().find(|a| a.id == cid).map(|a| a.name.clone()).unwrap_or_else(|| c["name"].as_str().unwrap_or(cid).replace(['-', '_'], " "));
+        let style = c["animation_style"].as_str().unwrap_or("cutout_2_5d");
+
+        // 1. 3D / 2.5D GLB & Blender model clips
         let m = &c["tripo_3d"];
-        let file = m["primary_glb"].as_str()?;
-        let name = s.project_assets.iter().find(|a| a.id == c["id"]).map(|a| a.name.clone()).unwrap_or_else(|| c["id"].as_str().unwrap_or("").replace('-', " "));
-        Some(json!({"id":c["id"],"name":name,"path":file,"rigged":m["rigged"],"clips":m["model_clips"],"version":std::fs::metadata(file).ok().and_then(|m|m.modified().ok()).and_then(|t|t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d|d.as_millis().to_string()),"qa_status":"needs-visual-review"}))
-    }).collect();
+        if m["available"].as_bool() == Some(true) {
+            let file = m["primary_glb"].as_str().or_else(|| m["blend_files"].as_array().and_then(|a| a.first()).and_then(Value::as_str)).unwrap_or_default();
+            let mut clip_names: Vec<Value> = m["model_clips"].as_array().cloned().unwrap_or_default();
+            for clip_obj in m["clips"].as_array().into_iter().flatten() {
+                if let Some(cn) = clip_obj["id"].as_str()
+                    && !clip_names.iter().any(|x| x.as_str() == Some(cn))
+                {
+                    clip_names.push(json!(cn));
+                }
+            }
+            models.push(json!({
+                "id": cid,
+                "name": name,
+                "animation_style": m["animation_style"].as_str().unwrap_or("rig_3d"),
+                "path": file,
+                "rigged": m["rigged"],
+                "clips": clip_names,
+                "version": std::fs::metadata(file).ok().and_then(|md| md.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis().to_string()),
+                "qa_status": "needs-visual-review"
+            }));
+        }
+
+        // 2. 2D Sprite Cycles & 2.5D EffectCraft Cutout Rig Cycles
+        let sprites = c["sprites"].as_array().cloned().unwrap_or_default();
+        if !sprites.is_empty() {
+            let clip_names: Vec<Value> = sprites.iter().filter_map(|sp| sp["name"].as_str().map(|s| json!(s))).collect();
+            let first_ecproj = sprites.first().and_then(|sp| sp["ecproj"].as_str()).unwrap_or_default();
+            models.push(json!({
+                "id": cid,
+                "name": name,
+                "animation_style": style,
+                "path": first_ecproj,
+                "rigged": true,
+                "clips": clip_names,
+                "sprites": sprites,
+                "qa_status": "needs-visual-review"
+            }));
+        }
+    }
     Ok(json!({"ok":true,"project":s.project_path,"directory":dir,"models":models,"review":read(s)?,"motion_options":motion_options(),"file":path(s)?}))
 }
 
@@ -48,12 +90,25 @@ pub fn cmd_save_revision(s: &mut Session, p: &Value) -> Result<Value> {
         .as_str()
         .filter(|v| !v.is_empty() && v.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')))
         .ok_or_else(|| bad("Invalid character"))?;
-    let model = tripo::inspect_character_3d(s, &crate::workshop::project_dir(s)?, id);
-    let file = model["primary_glb"].as_str().ok_or_else(|| bad("Character has no GLB"))?;
     let clip = p["clip"].as_str().ok_or_else(|| bad("clip is required"))?;
-    if !model["model_clips"].as_array().is_some_and(|a| a.contains(&json!(clip))) {
-        return Err(bad("Clip is not in this character's GLB"));
-    }
+    let project_dir = crate::workshop::project_dir(s)?;
+    let model = tripo::inspect_character_3d(s, &project_dir, id);
+    let char_folder = super::character_folder(&project_dir, id);
+    let sprites = super::sprite_summaries(&char_folder);
+    let source_path = if let Some(sp) = sprites.iter().find(|sp| sp["name"].as_str() == Some(clip)) {
+        sp["ecproj"].as_str().ok_or_else(|| bad("Sprite cycle has no .ecproj"))?.to_owned()
+    } else if model["model_clips"].as_array().is_some_and(|a| a.contains(&json!(clip)))
+        || model["clips"].as_array().is_some_and(|a| a.iter().any(|c| c["id"].as_str() == Some(clip)))
+    {
+        model["primary_glb"]
+            .as_str()
+            .or_else(|| model["blend_files"].as_array().and_then(|a| a.first()).and_then(Value::as_str))
+            .ok_or_else(|| bad("Character has no GLB or Blend file"))?
+            .to_owned()
+    } else {
+        return Err(bad("Clip is not in this character's GLB, Blender rig, or sprite/EffectCraft cycles"));
+    };
+    let file = source_path.as_str();
     let d = &p["draft"];
     let start = number(d, "trim_start", 0., 3600.)?;
     let end = number(d, "trim_end", 0., 3600.)?;

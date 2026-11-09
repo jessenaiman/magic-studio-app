@@ -52,8 +52,35 @@ pub fn fields_with_cat() -> Vec<(&'static str, Field)> {
         ("project", Field { key: "project.root", label: "Production project root", kind: Kind::Path, wired: true, enabled_by: None }),
         ("project", Field { key: "project.characters_root", label: "Characters root", kind: Kind::Path, wired: true, enabled_by: None }),
         (
+            "project",
+            Field {
+                key: "project.storyboard_template",
+                label: "Storyboard template",
+                kind: Kind::Choice(&[("magic", "Magic Studio Canonical Storyboard")]),
+                wired: true,
+                enabled_by: None,
+            },
+        ),
+        (
+            "project",
+            Field {
+                key: "project.storyboard_format",
+                label: "Storyboard document format",
+                kind: Kind::Choice(&[("designcraft", "DesignCraft (.designcraft + .pdf + .pptx)")]),
+                wired: true,
+                enabled_by: None,
+            },
+        ),
+        ("project", Field { key: "project.storyboard_locked", label: "Lock canonical storyboard template", kind: Kind::Bool, wired: true, enabled_by: None }),
+        (
             "image",
-            Field { key: "image.provider", label: "Image provider", kind: Kind::Choice(&[("codex", "Codex (subscription)")]), wired: true, enabled_by: None },
+            Field {
+                key: "image.provider",
+                label: "Image provider",
+                kind: Kind::Choice(&[("codex", "Codex (subscription)"), ("flow", "Google Flow (Ultra subscription)")]),
+                wired: true,
+                enabled_by: None,
+            },
         ),
         ("image", Field { key: "scribbles.template", label: "Scribbles template", kind: Kind::Text, wired: true, enabled_by: None }),
         (
@@ -61,7 +88,7 @@ pub fn fields_with_cat() -> Vec<(&'static str, Field)> {
             Field {
                 key: "scribbles.provider",
                 label: "Scribbles provider",
-                kind: Kind::Choice(&[("codex", "Codex (subscription)")]),
+                kind: Kind::Choice(&[("codex", "Codex (subscription)"), ("flow", "Google Flow (Ultra subscription)")]),
                 wired: true,
                 enabled_by: None,
             },

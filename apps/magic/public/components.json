@@ -1270,12 +1270,6 @@
       "label": "pose scene",
       "indicator": "hidden"
     },
-    "authoring-pose-scenes": {
-      "component": "ghost",
-      "label": "pose scenes",
-      "indicator": "hidden",
-      "command": "storyboard.toc"
-    },
     "authoring-pose-status": {
       "component": "muted",
       "label": "pose status",

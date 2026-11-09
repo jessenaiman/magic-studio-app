@@ -23,6 +23,7 @@ L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
 
 | Crate | Layer | Purpose (actual) |
 |---|---|---|
+| `craft-scribbles` | L4 | Google Flow (`Moppet Maker`) app-window launcher, handoff asset ingestor (`handoff.json`, `character.png`, `parts-sheet.png`, `pose-sheet.png`), animated SVG builder, and video clip bridge |
 | `magic-engine` | L5 | `Session`, 162 commands in `cmd/<domain>/`, `session/execute.rs`, `undo.rs`, `guard.rs`, `workspace.rs`, `craft_hub/mod.rs` (drives Craft apps via `--control` / `<app>-cli`; `config.toml` via `craft-settings`) |
 | `magic-mcp` | L6 | MCP stdio server, headless or `--bridge` to running app |
 | `magic` | L7 | Desktop shell: React/Tauri (`apps/magic/ui` frontend), one managed engine session, authenticated `--control` listener |
@@ -74,11 +75,3 @@ pub struct CommandSpec { // crates/engine/src/commands.rs:26
 - `magic-cli --bridge 127.0.0.1:9876 mcp`: Craft-style `rmcp` tools; no local session or automatic fallback in bridge mode. Omit `--bridge` for explicit headless operation.
 - The separate browser HTTP UI server and old Unix-socket transport have been removed; restored workspaces use the native Tauri adapter.
 - See [control-protocol.md](control-protocol.md) for implemented UI operations and the canonical launch instructions.
-
-## 6. Known deviations (true)
-
-- Tauri is the chosen active shell; the frontend remains in `apps/magic/ui`. Older `apps/magic-cli/ui` assets and egui views remain restoration references, not parallel Tauri configurations.
-- `craft-libs` git dependencies (`craft-atomic`, `craft-audio`, `craft-doc`, `craft-docpath`, `craft-settings`) are rev-pinned in `Cargo.toml`; sibling Craft app engines are not linked as Cargo dependencies and are driven through `CraftHub` (`--control` or `<app>-cli`).
-- `target/analytics/{audit,lizard}.json` stale, references deleted `apps/src-tauri` — Mayhem reads it, nothing regenerates it.
-- `f64` seconds, no `Tick` — no exact time guarantee.
-- Tests: 17 lib tests, all mock/local (scribbles template resolution only). No test fires `image.generate` (OpenAI `ureq::post` / Codex `exec`) — by design, but unproven that paid path works.

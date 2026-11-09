@@ -49,6 +49,7 @@ pub(crate) struct CraftDoc {
     work_path: PathBuf,
     input_path: PathBuf,
     stamp: Option<FileStamp>,
+    live_synced: bool,
     _work_dir: ScopedTempDir,
 }
 
@@ -81,7 +82,7 @@ impl CraftDoc {
         let work_dir = ScopedTempDir::new(&format!("magic-{}-work", target.name()))?;
         let name = path.file_name().ok_or_else(|| EngineError::InvalidParams(format!("{} has no file name", path.display())))?;
         let work_path = work_dir.0.join(name);
-        Ok(Self { target, path: path.to_path_buf(), input_path: work_path.clone(), work_path, stamp: None, _work_dir: work_dir })
+        Ok(Self { target, path: path.to_path_buf(), input_path: work_path.clone(), work_path, stamp: None, live_synced: false, _work_dir: work_dir })
     }
 
     /// Copy `source` to a private work file whose `save` writes atomically to `path`.
@@ -100,7 +101,7 @@ impl CraftDoc {
             src_copy
         };
         crate::link_watch::save_guard(path, stamp)?;
-        Ok(Self { target, path: path.to_path_buf(), work_path, input_path, stamp, _work_dir: work_dir })
+        Ok(Self { target, path: path.to_path_buf(), work_path, input_path, stamp, live_synced: false, _work_dir: work_dir })
     }
 
     /// The original document.
@@ -113,13 +114,27 @@ impl CraftDoc {
         &self.work_path
     }
 
-    /// Run `steps` against the work copy in one app process, saving the copy when any step
-    /// changes it, and return each step's result.
+    /// Run `steps` against the live open document (when the target app has `self.path` open on its
+    /// `--control` port) or against the private work copy in one app process, saving the copy when
+    /// any step changes it, and return each step's result.
     pub(crate) fn batch(&mut self, steps: &[(&str, Value)]) -> Result<Vec<Value>> {
         let mutates = steps.iter().any(|(id, _)| !READ_ONLY.contains(id));
+        if self.path.is_file()
+            && let Some(live_res) = super::try_live_batch(self.target, &self.path, steps, mutates)
+        {
+            let results = live_res?;
+            if mutates {
+                let _ = std::fs::copy(&self.path, &self.work_path);
+                self.input_path = self.work_path.clone();
+                self.stamp = FileStamp::of(&self.path);
+                self.live_synced = true;
+            }
+            return Ok(results);
+        }
         let mut cmd = batch_command(self.target, &self.input_path, &self.work_path, steps, mutates)?;
         if mutates {
             self.input_path = self.work_path.clone();
+            self.live_synced = false;
         }
         let use_stdin = !matches!(self.target, CraftTarget::Photo);
         if use_stdin {
@@ -153,6 +168,10 @@ impl CraftDoc {
     /// Replace the original with the work copy. Refuses when another writer changed the
     /// original since it was opened or last saved.
     pub(crate) fn save(&mut self) -> Result<()> {
+        if self.live_synced {
+            self.stamp = FileStamp::of(&self.path);
+            return Ok(());
+        }
         crate::link_watch::save_guard(&self.path, self.stamp)?;
         let bytes = std::fs::read(&self.work_path)?;
         crate::doc_state::write_file(&self.path, bytes)?;

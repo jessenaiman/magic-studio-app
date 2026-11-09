@@ -210,6 +210,20 @@ body.animation-mode :is(#tab-project, #tab-storyboard, #tab-design, #tab-studio,
 .craft-design { background: linear-gradient(135deg, #f43f5e, #e11d48); }
 .craft-effect { background: linear-gradient(135deg, #a855f7, #7c3aed); }
 .craft-film { background: linear-gradient(135deg, #34d399, #10b981); }
+.craft-scribbles {
+  background: linear-gradient(135deg, #271f36, #1b1526);
+  border: 1px solid rgba(238, 130, 65, 0.55);
+  box-shadow: 0 0 0 1px rgba(156, 131, 217, 0.2);
+}
+.craft-scribbles:hover {
+  border-color: #ee8241;
+}
+.craft-scribbles-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+  pointer-events: none;
+}
 
 @media (max-width:1120px) {
   .top-project-pill { max-width: 150px; padding: 0 10px; font-size: 12px; }

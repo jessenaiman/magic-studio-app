@@ -14,10 +14,16 @@ pub(crate) fn sprite_dir(s: &Session, id: &str, name: &str) -> Result<PathBuf> {
     Ok(crate::workshop::project_dir(s)?.join("assets/characters").join(id).join("sprites").join(name))
 }
 
-/// Remove background once on the full sheet in PhotoCraft, then crop, trim transparent margins, and
-/// re-pad each cell (`anchor: "bottom"` for grounded actions, `"center"` for airborne actions)
-/// using PhotoCraft's native `image.crop` → `image.trim` → `image.canvasSize` pipeline.
+/// Remove background, strip green edge spill and floor lines, isolate the main character island
+/// inside each cell (so adjacent snouts/tails don't bleed across cell borders), and center/pad
+/// each frame (`lock_baseline: true` for grounded actions, `false` for airborne actions).
 fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32), lock_baseline: bool) -> Result<Vec<PathBuf>> {
+    let frames_dir = dir.join("frames");
+    if let Ok(cleaned) = craft_scribbles::clean_and_crop_sprite_sheet(sheet, &frames_dir, grid, lock_baseline)
+        && !cleaned.is_empty()
+    {
+        return Ok(cleaned);
+    }
     let clean_sheet = dir.join("sheet-cutout.png");
     crate::cmd::character::cut::photocraft_run(
         sheet,
@@ -32,14 +38,13 @@ fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32), lock_baseline: bool) 
     let (cols, rows) = grid;
     let (cw, ch) = (w / cols, h / rows);
     let anchor = if lock_baseline { "bottom" } else { "center" };
-    let frames = dir.join("frames");
-    if frames.is_dir() {
-        std::fs::remove_dir_all(&frames)?;
+    if frames_dir.is_dir() {
+        std::fs::remove_dir_all(&frames_dir)?;
     }
-    std::fs::create_dir_all(&frames)?;
+    std::fs::create_dir_all(&frames_dir)?;
     let mut out = Vec::new();
     for i in 0..cols * rows {
-        let file = frames.join(format!("frame_{:04}.png", i + 1));
+        let file = frames_dir.join(format!("frame_{:04}.png", i + 1));
         let crop = json!({"x": (i % cols) * cw, "y": (i / cols) * ch, "width": cw, "height": ch});
         crate::cmd::character::cut::photocraft_run(
             &clean_sheet,
@@ -89,8 +94,9 @@ pub fn cmd_character_sprite(s: &mut Session, p: &Value) -> Result<Value> {
     }
     steps.push(step("file.saveAs", json!({"path": project})));
     effectcraft(&dir, None, &steps, true)?;
-    let meta = json!({"character": id, "sprite": name, "action": action, "sheet": dir.join("sheet.png"),
-        "source_sheet": sheet, "frames": frames.len(), "fps": fps, "cycle_seconds": frames.len() as f64 / fps as f64,
+    let meta = json!({"character": id, "sprite": name, "action": action, "animation_style": "sprite_2d",
+        "sheet": dir.join("sheet.png"), "source_sheet": sheet, "frames": frames.len(), "fps": fps,
+        "cycle_seconds": frames.len() as f64 / fps as f64,
         "duration": duration, "mirror": p["mirror"] == true, "comp": comp, "ecproj": project});
     crate::doc_state::write_json(&dir.join("sprite.json"), &meta)?;
     Ok(json!({"ok": true, "sprite": meta,

@@ -116,6 +116,25 @@ export const App: React.FC = () => {
     }
   };
 
+  const openScribbles = async () => {
+    try {
+      const res = await executeCommand<{
+        ingested?: { character_id?: string; registered_count?: number };
+      }>("scribbles.open", {
+        character: selectedCharacterId,
+      });
+      const count = res?.ingested?.registered_count ?? 0;
+      if (count > 0) {
+        await refreshProject();
+        showToast(`Opened Scribbles (Moppet Maker) · ingested ${count} asset${count === 1 ? "" : "s"}`);
+      } else {
+        showToast("Opened Scribbles (Google Flow Moppet Maker)");
+      }
+    } catch (error) {
+      showToast(`Could not open Scribbles: ${error}`);
+    }
+  };
+
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
@@ -301,7 +320,7 @@ export const App: React.FC = () => {
               onClick={() => setView(id)}
             >
               {id === "storyboard" && (
-                <Tooltip label={data?.storyboard?.error || `${data?.storyboard?.count ?? 0} unfilled fields; ${data?.storyboard?.preflight?.errors ?? 0} layout errors`}>
+                <Tooltip label={data?.storyboard?.error || `${data?.storyboard?.count ?? 0} unfilled fields`}>
                 <span
                   aria-label={data?.storyboard?.complete ? "Storyboard complete" : "Storyboard incomplete"}
                   className={`app-storyboard-dot ${data?.storyboard?.complete ? "complete" : data?.storyboard?.status === "review" ? "review" : "incomplete"}`}
@@ -404,6 +423,22 @@ export const App: React.FC = () => {
                 <rect x="3" y="4" width="18" height="16" rx="2" />
                 <path d="M7 4v16M17 4v16M3 10h18M3 15h4M17 15h4" />
               </svg>
+            </button>
+            </Tooltip>
+            <Tooltip label="Open Scribbles (Google Flow Moppet Maker & auto-ingest downloads)">
+            <button
+              id="scribbles-toggle"
+              className="craft-dock-btn craft-scribbles"
+              onClick={() => void openScribbles()}
+              aria-label="Open Scribbles (Moppet Maker)"
+            >
+              <img
+                src="/scribbles-cat-work.svg"
+                alt="Scribbles"
+                width={22}
+                height={22}
+                className="craft-scribbles-icon"
+              />
             </button>
             </Tooltip>
           </div>

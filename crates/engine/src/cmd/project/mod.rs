@@ -264,9 +264,18 @@ fn recent_warning(s: &Session, path: &Path, requested: bool) -> Vec<Value> {
     }
 }
 
-/// Process audio when `project.new` is given `audio`.
-fn bootstrap_new_project_workshop(s: &mut Session, _path: &Path, params: &Value) -> Vec<Value> {
+/// Process audio and ensure the canonical storyboard exists when `project.new` runs.
+fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) -> Vec<Value> {
     let mut steps = Vec::new();
+    let prefs = crate::settings::prefs::open_store();
+    if prefs.get().project.storyboard_locked {
+        let sb = path.with_file_name("storyboard.designcraft");
+        if !sb.is_file()
+            && let Ok(_) = crate::cmd::storyboard::cmd_storyboard_new(s, &json!({"path": sb, "overwrite": false}))
+        {
+            steps.push(json!({"command": "storyboard.new", "status": "complete; canonical storyboard.designcraft + storyboard.pdf + storyboard.pptx created"}));
+        }
+    }
     let Some(raw_audio) = params.get("audio").and_then(Value::as_str).filter(|v| !v.is_empty()) else {
         return steps;
     };
@@ -417,6 +426,12 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 fn repair_opened_workshop_links(s: &mut Session, path: &Path) {
+    if s.project_mode.is_none() && crate::settings::prefs::open_store().get().project.storyboard_locked {
+        let sb = path.with_file_name("storyboard.designcraft");
+        if !sb.is_file() {
+            let _ = crate::cmd::storyboard::cmd_storyboard_new(s, &json!({"path": sb, "overwrite": false}));
+        }
+    }
     let mut changed = false;
     if let Ok(doc) = read_project_document(path)
         && project_is_dirty(s, &doc)

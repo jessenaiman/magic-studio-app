@@ -1,0 +1,1277 @@
+//! Scribbles (`craft-scribbles`): Google Flow (Moppet Maker) app-window launcher, handoff asset
+//! ingestor (`handoff.json`, `character.png`, `parts-sheet.png`, `pose-sheet.png`), animated
+//! SVG builder, and video clip bridge for Magic Studio.
+//!
+//! Authentication and UI features stay inside the user's signed-in Google Flow Tool Builder
+//! (`Moppet Maker`). This crate launches/focuses the dedicated Chrome `--app` window and
+//! bridges its downloaded outputs directly into Magic Studio projects.
+
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// Default Google Flow Moppet Maker Tool URL in the user's `Moppet Animation` project.
+pub const DEFAULT_MOPPET_MAKER_URL: &str =
+    "https://flow.google.com/project/a16c9456-67b1-41f8-a995-79f4918d6737/tool/c4919fed-dcbe-498c-9839-2073ce1c8609?fromViewSource=tools";
+
+/// Default Google Flow project URL (`Moppet Animation`).
+pub const DEFAULT_FLOW_PROJECT_URL: &str = "https://flow.google.com/project/a16c9456-67b1-41f8-a995-79f4918d6737";
+
+#[derive(Debug, thiserror::Error)]
+pub enum ScribblesError {
+    #[error("{0}")]
+    Invalid(String),
+    #[error("external tool `{0}` failed: {1}")]
+    Tool(String, String),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+pub type Result<T> = std::result::Result<T, ScribblesError>;
+
+/// Parsed or discovered Moppet Maker handoff bundle from `~/Downloads` or an explicit directory.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct IngestedMoppetBundle {
+    pub character_id: String,
+    pub character_name: String,
+    pub view: String,
+    pub action: String,
+    pub grid: (u32, u32),
+    pub source_dir: PathBuf,
+    pub dest_dir: PathBuf,
+    pub handoff_json: Option<PathBuf>,
+    pub parts_json: Option<PathBuf>,
+    pub character_png: Option<PathBuf>,
+    pub parts_sheet_png: Option<PathBuf>,
+    pub pose_sheet_png: Option<PathBuf>,
+    pub animated_svg: Option<PathBuf>,
+    pub metadata: Value,
+}
+
+/// Find an executable on `PATH` or in `~/.local/bin`.
+pub fn find_binary(name: &str) -> Option<PathBuf> {
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let local_bin = PathBuf::from(home).join(".local/bin").join(name);
+        if local_bin.is_file() {
+            return Some(local_bin);
+        }
+    }
+    None
+}
+
+/// Locate the user's Chrome / Chromium executable for `--app=<url>` window mode.
+pub fn find_chrome_binary() -> Option<PathBuf> {
+    for candidate in ["google-chrome-stable", "google-chrome", "chromium", "chromium-browser", "brave-browser"] {
+        if let Some(path) = find_binary(candidate) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Launch or focus Google Flow's Moppet Maker in a dedicated Chrome `--app` window.
+/// Because it uses the user's normal Chrome profile, Google handles authentication, cookies,
+/// and 0-credit Ultra subscription access directly.
+pub fn open_moppet_maker_window(custom_url: Option<&str>) -> Result<Value> {
+    let url = custom_url.map(str::trim).filter(|s| !s.is_empty()).unwrap_or(DEFAULT_MOPPET_MAKER_URL);
+    if !url.starts_with("https://flow.google.com/") && !url.starts_with("https://labs.google/") {
+        return Err(ScribblesError::Invalid(format!("Scribbles app window only opens Google Flow URLs (`https://flow.google.com/...`), got `{url}`")));
+    }
+
+    if let Some(hyprctl) = find_binary("hyprctl")
+        && let Ok(out) = Command::new(&hyprctl).args(["clients", "-j"]).output()
+        && out.status.success()
+        && let Ok(clients) = serde_json::from_slice::<Value>(&out.stdout)
+        && let Some(arr) = clients.as_array()
+    {
+        for client in arr {
+            let class = client["class"].as_str().unwrap_or_default();
+            let title = client["title"].as_str().unwrap_or_default();
+            if class.contains("flow.google.com__project_") || title.contains("Moppet") {
+                let addr = client["address"].as_str().unwrap_or_default();
+                if !addr.is_empty() {
+                    let _ = Command::new(&hyprctl).args(["dispatch", "focuswindow", &format!("address:{addr}")]).output();
+                    return Ok(json!({
+                        "ok": true,
+                        "launched": false,
+                        "focused": true,
+                        "window_open": true,
+                        "address": addr,
+                        "class": class,
+                        "url": url,
+                        "project_url": DEFAULT_FLOW_PROJECT_URL,
+                    }));
+                }
+            }
+        }
+    }
+
+    if let Some(chrome) = find_chrome_binary() {
+        let app_arg = format!("--app={url}");
+        Command::new(&chrome)
+            .arg(&app_arg)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| ScribblesError::Tool(chrome.display().to_string(), e.to_string()))?;
+        return Ok(json!({
+            "ok": true,
+            "launched": true,
+            "mode": "chrome-app-window",
+            "browser": chrome,
+            "url": url,
+            "project_url": DEFAULT_FLOW_PROJECT_URL,
+        }));
+    }
+
+    if let Some(xdg) = find_binary("xdg-open") {
+        Command::new(&xdg)
+            .arg(url)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| ScribblesError::Tool("xdg-open".into(), e.to_string()))?;
+        return Ok(json!({
+            "ok": true,
+            "launched": true,
+            "mode": "xdg-open",
+            "browser": xdg,
+            "url": url,
+        }));
+    }
+
+    Err(ScribblesError::Tool("chrome".into(), "No Chrome/Chromium or xdg-open binary found on PATH".into()))
+}
+
+/// Ensure a downloaded image file is a valid PNG (Google Flow sometimes saves JPEG bytes with a `.png` extension).
+pub fn ensure_valid_png(src: &Path, dst: &Path) -> Result<(u32, u32)> {
+    let bytes = fs::read(src)?;
+    if bytes.len() < 8 {
+        return Err(ScribblesError::Invalid(format!("Image file {} is empty or truncated", src.display())));
+    }
+    let img = image::load_from_memory(&bytes).map_err(|e| ScribblesError::Invalid(format!("Could not decode image {}: {e}", src.display())))?;
+    let width = img.width();
+    let height = img.height();
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        if src != dst {
+            fs::copy(src, dst)?;
+        }
+    } else {
+        img.save_with_format(dst, image::ImageFormat::Png).map_err(|e| ScribblesError::Invalid(format!("Failed to write PNG {}: {e}", dst.display())))?;
+    }
+    Ok((width, height))
+}
+
+/// Locate the most recently modified file matching any of the candidate prefixes in `dir`.
+fn newest_matching_file(dir: &Path, prefixes: &[&str], ext: &str) -> Option<PathBuf> {
+    let entries = fs::read_dir(dir).ok()?;
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let lower = name.to_ascii_lowercase();
+        if !lower.ends_with(ext) {
+            continue;
+        }
+        if prefixes.iter().any(|p| lower.starts_with(p)) {
+            let mtime = entry.metadata().and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            if best.as_ref().is_none_or(|(t, _)| mtime > *t) {
+                best = Some((mtime, path));
+            }
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+/// Sanitize a string into a clean snake_case identifier matching `magic_engine::workspace::sanitize_asset_id`.
+pub fn sanitize_id(raw: &str) -> String {
+    let mut out = String::new();
+    let mut last_sep = false;
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            last_sep = false;
+        } else if !last_sep && !out.is_empty() {
+            out.push('_');
+            last_sep = true;
+        }
+    }
+    out.trim_matches('_').to_string()
+}
+
+/// Scan `source_dir` (defaults to `~/Downloads`) for Moppet Maker outputs (`handoff.json`,
+/// `character.png`, `parts-sheet.png`, `pose-sheet.png`) and ingest them into
+/// `<project_root>/assets/characters/<character_id>/`.
+pub fn ingest_moppet_downloads(project_root: &Path, source_dir: Option<&Path>, requested_character_id: Option<&str>) -> Result<IngestedMoppetBundle> {
+    let downloads = match source_dir {
+        Some(d) => d.to_path_buf(),
+        None => {
+            let home = std::env::var_os("HOME").ok_or_else(|| ScribblesError::Invalid("HOME is unset".into()))?;
+            PathBuf::from(home).join("Downloads")
+        }
+    };
+    if !downloads.is_dir() {
+        return Err(ScribblesError::Invalid(format!("Downloads directory {} does not exist", downloads.display())));
+    }
+
+    let handoff_src = newest_matching_file(&downloads, &["handoff", "moppet-handoff"], ".json");
+    let mut meta = Value::Object(Default::default());
+    if let Some(ref h_path) = handoff_src
+        && let Ok(raw) = fs::read_to_string(h_path)
+        && let Ok(parsed) = serde_json::from_str::<Value>(&raw)
+    {
+        meta = parsed;
+    }
+
+    let inferred_name = requested_character_id
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| meta["characterName"].as_str())
+        .or_else(|| meta["name"].as_str())
+        .or_else(|| meta["recipe"]["animal"].as_str())
+        .unwrap_or("moppet");
+    let char_id = {
+        let clean = sanitize_id(inferred_name);
+        if clean.is_empty() { "moppet".to_string() } else { clean }
+    };
+
+    let dest_dir = project_root.join("assets/characters").join(&char_id);
+    fs::create_dir_all(&dest_dir)?;
+
+    let view = meta["view"]
+        .as_str()
+        .or_else(|| meta["direction"].as_str())
+        .map(|v| {
+            let l = v.to_ascii_lowercase();
+            if l.contains("right") || l.contains("left") || l.contains("side") {
+                "side"
+            } else if l.contains("back") || l.contains("up") {
+                "back"
+            } else {
+                "front"
+            }
+        })
+        .unwrap_or("front")
+        .to_string();
+
+    let action = meta["action"]
+        .as_str()
+        .or_else(|| meta["spriteAction"].as_str())
+        .map(sanitize_id)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| if view == "side" { "walk_right".into() } else { "walk_down".into() });
+
+    let cols = meta["columns"].as_u64().or_else(|| meta["grid"][0].as_u64()).unwrap_or(2) as u32;
+    let rows = meta["rows"].as_u64().or_else(|| meta["grid"][1].as_u64()).unwrap_or(2) as u32;
+
+    let mut bundle = IngestedMoppetBundle {
+        character_id: char_id.clone(),
+        character_name: inferred_name.to_string(),
+        view: view.clone(),
+        action: action.clone(),
+        grid: (cols.max(1), rows.max(1)),
+        source_dir: downloads.clone(),
+        dest_dir: dest_dir.clone(),
+        handoff_json: None,
+        parts_json: None,
+        character_png: None,
+        parts_sheet_png: None,
+        pose_sheet_png: None,
+        animated_svg: None,
+        metadata: meta.clone(),
+    };
+
+    if let Some(src) = handoff_src {
+        let dst = dest_dir.join("handoff.json");
+        if src != dst {
+            let _ = fs::copy(&src, &dst);
+        }
+        bundle.handoff_json = Some(dst);
+    }
+
+    // Ingest `parts.json` (either standalone download or embedded in `handoff.json` under `parts` / `rig`)
+    let view_dir = dest_dir.join(&view);
+    fs::create_dir_all(&view_dir)?;
+    if let Some(src) = newest_matching_file(&downloads, &["parts", "moppet-parts-rig"], ".json") {
+        let dst = view_dir.join("parts.json");
+        if src != dst {
+            let _ = fs::copy(&src, &dst);
+        }
+        bundle.parts_json = Some(dst);
+    } else if meta.get("parts").and_then(Value::as_array).is_some() {
+        let dst = view_dir.join("parts.json");
+        let parts_doc = json!({
+            "image": format!("{char_id}-{view}-drawing.png"),
+            "view": view,
+            "size": meta.get("size").cloned().unwrap_or_else(|| json!([1024, 1024])),
+            "skeleton": meta.get("skeleton").and_then(Value::as_str).unwrap_or("plush-9"),
+            "status": "ingested from Flow Moppet Maker; ready for character.cut and character.rig",
+            "parts": meta["parts"],
+        });
+        if let Ok(bytes) = serde_json::to_vec_pretty(&parts_doc) {
+            let _ = craft_atomic::atomic_write(&dst, &bytes);
+            bundle.parts_json = Some(dst);
+        }
+    }
+
+    if let Some(src) = newest_matching_file(&downloads, &["character", "moppet-character"], ".png") {
+        let dst = dest_dir.join("flow-original.png");
+        if ensure_valid_png(&src, &dst).is_ok() {
+            let view_drawing = view_dir.join(format!("{char_id}-{view}-drawing.png"));
+            let _ = fs::copy(&dst, &view_drawing);
+            bundle.character_png = Some(dst);
+        }
+    }
+
+    if let Some(src) = newest_matching_file(&downloads, &["parts-sheet", "parts_sheet", "moppet-parts"], ".png") {
+        let dst = dest_dir.join("parts-sheet.png");
+        if ensure_valid_png(&src, &dst).is_ok() {
+            bundle.parts_sheet_png = Some(dst);
+        }
+    }
+
+    if let Some(src) = newest_matching_file(&downloads, &["pose-sheet", "pose_sheet", "sprite-sheet", "moppet-poses"], ".png") {
+        let dst = dest_dir.join("pose-sheet.png");
+        if ensure_valid_png(&src, &dst).is_ok() {
+            bundle.pose_sheet_png = Some(dst.clone());
+            let svg_out = dest_dir.join("sprites").join(&action).join(format!("{char_id}-{action}.svg"));
+            if let Ok(svg_path) = build_animated_svg(&dst, &svg_out, 6) {
+                bundle.animated_svg = Some(svg_path);
+            }
+        }
+    }
+
+    Ok(bundle)
+}
+
+/// Slice a 2×2 chroma-green (`#00FF00`) pose sheet into a looping animated SVG via `flow-clip --mode svg`.
+pub fn build_animated_svg(sheet_png: &Path, out_svg: &Path, fps: u64) -> Result<PathBuf> {
+    if !sheet_png.is_file() {
+        return Err(ScribblesError::Invalid(format!("Pose sheet {} does not exist", sheet_png.display())));
+    }
+    if let Some(parent) = out_svg.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let cli = find_binary("flow-clip").ok_or_else(|| ScribblesError::Tool("flow-clip".into(), "flow-clip not found on PATH".into()))?;
+    let output = Command::new(&cli)
+        .args(["--mode", "svg", "--sheet"])
+        .arg(sheet_png)
+        .args(["--fps", &fps.to_string(), "--out"])
+        .arg(out_svg)
+        .output()
+        .map_err(|e| ScribblesError::Tool("flow-clip".into(), e.to_string()))?;
+    if !output.status.success() {
+        return Err(ScribblesError::Tool(
+            "flow-clip".into(),
+            format!("{}{}", String::from_utf8_lossy(&output.stderr), String::from_utf8_lossy(&output.stdout)),
+        ));
+    }
+    Ok(out_svg.to_path_buf())
+}
+
+/// Parameters for generating a short AI video clip through Google Flow (`flow-clip --mode video`).
+pub struct VideoClipRequest<'a> {
+    pub prompt: &'a str,
+    pub out_mp4: &'a Path,
+    pub model: Option<&'a str>,
+    pub aspect: Option<&'a str>,
+    pub duration: Option<&'a str>,
+    pub resolution: Option<&'a str>,
+    pub ingredient: Option<&'a str>,
+}
+
+/// Generate a short AI video clip (`.mp4`) via Google Flow (`flow-clip --mode video`).
+pub fn generate_video_clip(req: &VideoClipRequest<'_>) -> Result<PathBuf> {
+    if let Some(parent) = req.out_mp4.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let cli = find_binary("flow-clip").ok_or_else(|| ScribblesError::Tool("flow-clip".into(), "flow-clip not found on PATH".into()))?;
+    let mut cmd = Command::new(&cli);
+    cmd.args(["--mode", "video", "--prompt", req.prompt, "--out"]).arg(req.out_mp4);
+    if let Some(m) = req.model.filter(|v| !v.trim().is_empty()) {
+        cmd.args(["--model", m]);
+    }
+    if let Some(a) = req.aspect.filter(|v| !v.trim().is_empty()) {
+        cmd.args(["--aspect", a]);
+    }
+    if let Some(d) = req.duration.filter(|v| !v.trim().is_empty()) {
+        cmd.args(["--duration", d]);
+    }
+    if let Some(r) = req.resolution.filter(|v| !v.trim().is_empty()) {
+        cmd.args(["--resolution", r]);
+    }
+    if let Some(i) = req.ingredient.filter(|v| !v.trim().is_empty()) {
+        cmd.args(["--ingredient", i]);
+    }
+    let output = cmd.output().map_err(|e| ScribblesError::Tool("flow-clip".into(), e.to_string()))?;
+    if !output.status.success() {
+        return Err(ScribblesError::Tool(
+            "flow-clip".into(),
+            format!("exit {:?}: {}{}", output.status.code(), String::from_utf8_lossy(&output.stderr), String::from_utf8_lossy(&output.stdout)),
+        ));
+    }
+    Ok(req.out_mp4.to_path_buf())
+}
+
+/// Extracted single part from a chroma-green (`#00FF00`) `parts-sheet.png`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ExtractedPart {
+    pub id: String,
+    pub parent: Option<String>,
+    pub file: PathBuf,
+    pub bounds: [u32; 4],
+    pub joint: [f64; 2],
+    pub pins: Vec<[f64; 2]>,
+    pub outline: Vec<[u32; 2]>,
+}
+
+/// Check if an RGBA pixel is chroma-green background (`#00FF00` with tolerance for anti-aliased edges).
+fn is_chroma_green(r: u8, g: u8, b: u8, a: u8) -> bool {
+    if a < 16 {
+        return true;
+    }
+    let rf = i32::from(r);
+    let gf = i32::from(g);
+    let bf = i32::from(b);
+    (gf > 110 && (gf - rf) > 32 && (gf - bf) > 32) || (gf > 65 && (gf - rf) > 42 && (gf - bf) > 42)
+}
+
+/// De-spill green fringe on semi-transparent/edge pixels after chroma-keying.
+fn despill_rgba(r: u8, g: u8, b: u8, a: u8) -> [u8; 4] {
+    if is_chroma_green(r, g, b, a) {
+        return [0, 0, 0, 0];
+    }
+    let rf = i32::from(r);
+    let gf = i32::from(g);
+    let bf = i32::from(b);
+    let max_rb = r.max(b);
+    let excess_g = gf - i32::from(max_rb);
+    if excess_g > 12 {
+        let avg_rb = ((rf + bf) / 2).clamp(0, 255) as u8;
+        let clean_a = if excess_g > 35 { a.saturating_sub(((excess_g - 35) * 3).min(255) as u8) } else { a };
+        return [r, avg_rb, b, clean_a];
+    }
+    [r, g, b, a]
+}
+
+/// Decode an image file (PNG or JPEG, regardless of file extension) into an RGBA8 buffer.
+fn open_rgba_flexible(path: &Path) -> Result<image::RgbaImage> {
+    let bytes = fs::read(path).map_err(ScribblesError::Io)?;
+    let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| ScribblesError::Invalid(format!("Failed to guess format of {}: {e}", path.display())))?;
+    Ok(reader.decode().map_err(|e| ScribblesError::Invalid(format!("Failed to decode {}: {e}", path.display())))?.to_rgba8())
+}
+
+/// Cleanly extract individual 2D sprite frames from a grid sprite sheet (`cols x rows`).
+///
+/// 1. Keys out chroma-green (`#00FF00`) or top-left corner background color and de-spills green fringes.
+/// 2. Strips full-width horizontal floor/divider lines that bleed across the bottom of cells.
+/// 3. Isolates the primary central connected component in each `(col, row)` cell so neighboring
+///    frames' snouts or tails that cross the cell boundary are removed.
+/// 4. Re-centers horizontally and locks the baseline (for grounded actions) or centers vertically
+///    (for airborne actions) inside `cw x ch` frame PNGs written via `craft_atomic::atomic_write`.
+pub fn clean_and_crop_sprite_sheet(sheet_png: &Path, frames_dir: &Path, grid: (u32, u32), lock_baseline: bool) -> Result<Vec<PathBuf>> {
+    let img = open_rgba_flexible(sheet_png)?;
+    let (w, h) = img.dimensions();
+    let (cols, rows) = (grid.0.max(1), grid.1.max(1));
+    let (cw, ch) = ((w / cols).max(1), (h / rows).max(1));
+
+    let corner = img.get_pixel(2.min(w - 1), 2.min(h - 1)).0;
+    let corner_is_green = is_chroma_green(corner[0], corner[1], corner[2], corner[3]);
+    let is_bg = |r: u8, g: u8, b: u8, a: u8| -> bool {
+        if a < 20 || is_chroma_green(r, g, b, a) {
+            return true;
+        }
+        if !corner_is_green && corner[3] > 200 {
+            let dr = (i32::from(r) - i32::from(corner[0])).abs();
+            let dg = (i32::from(g) - i32::from(corner[1])).abs();
+            let db = (i32::from(b) - i32::from(corner[2])).abs();
+            if dr + dg + db < 54 {
+                return true;
+            }
+        }
+        false
+    };
+
+    if frames_dir.is_dir() {
+        let _ = fs::remove_dir_all(frames_dir);
+    }
+    fs::create_dir_all(frames_dir)?;
+
+    // Pre-detect full-sheet horizontal divider/floor lines across the entire sheet width `w`.
+    // A real divider line spans across nearly the entire sheet including inter-cell gaps (> 92% of `w`)
+    // and is thin vertically (<= 4px).
+    let mut full_row_fg = vec![0u32; h as usize];
+    for y in 0..h {
+        let mut count = 0u32;
+        for x in 0..w {
+            let p = img.get_pixel(x, y).0;
+            if !is_bg(p[0], p[1], p[2], p[3]) {
+                count += 1;
+            }
+        }
+        full_row_fg[y as usize] = count;
+    }
+    let mut is_divider_row = vec![false; h as usize];
+    for y in 0..h {
+        if full_row_fg[y as usize] * 100 > w * 92 {
+            let y_above = y.saturating_sub(3) as usize;
+            let y_below = (y + 3).min(h - 1) as usize;
+            if full_row_fg[y_above] * 100 < w * 70 && full_row_fg[y_below] * 100 < w * 70 {
+                for ny in y.saturating_sub(1)..=(y + 1).min(h - 1) {
+                    is_divider_row[ny as usize] = true;
+                }
+            }
+        }
+    }
+
+    // Find `col` boundary X coordinates by searching near each ideal grid column split `(col * cw)`
+    // (`±28px`) for the vertical column with the fewest foreground pixels. This prevents wide characters'
+    // snouts or tails from being sliced by rigid uniform `col * cw` boundaries.
+    let mut col_fg = vec![0u32; w as usize];
+    for x in 0..w {
+        let mut count = 0u32;
+        for y in 0..h {
+            if is_divider_row[y as usize] {
+                continue;
+            }
+            let p = img.get_pixel(x, y).0;
+            if !is_bg(p[0], p[1], p[2], p[3]) {
+                count += 1;
+            }
+        }
+        col_fg[x as usize] = count;
+    }
+    let mut col_splits = Vec::with_capacity((cols + 1) as usize);
+    col_splits.push(0u32);
+    for c in 1..cols {
+        let ideal = c * cw;
+        let search_r = (cw / 8).clamp(8, 32);
+        let x0 = ideal.saturating_sub(search_r);
+        let x1 = (ideal + search_r).min(w - 1);
+        let mut best_x = ideal;
+        let mut best_cost = u32::MAX;
+        for x in x0..=x1 {
+            let dist_penalty = x.abs_diff(ideal) / 4;
+            let cost = col_fg[x as usize] * 4 + dist_penalty;
+            if cost < best_cost {
+                best_cost = cost;
+                best_x = x;
+            }
+        }
+        col_splits.push(best_x);
+    }
+    col_splits.push(w);
+
+    let mut out = Vec::with_capacity((cols * rows) as usize);
+    for idx in 0..(cols * rows) {
+        let col = idx % cols;
+        let row = idx / cols;
+        let ox = col_splits[col as usize];
+        let cell_w = (col_splits[(col + 1) as usize].saturating_sub(ox)).max(1);
+        let oy = row * ch;
+
+        // Downsampled 4x4 grid inside this cell for connected-component isolation
+        let step = 4u32;
+        let gw = cell_w.div_ceil(step) as usize;
+        let gh = ch.div_ceil(step) as usize;
+        let mut mask = vec![false; gw * gh];
+        for gy in 0..gh {
+            for gx in 0..gw {
+                let mut fg_votes = 0u32;
+                for dy in 0..step {
+                    for dx in 0..step {
+                        let lx = gx as u32 * step + dx;
+                        if lx >= cell_w {
+                            continue;
+                        }
+                        let px = (ox + lx).min(w - 1);
+                        let py = (oy + gy as u32 * step + dy).min(h - 1);
+                        if is_divider_row[py as usize] {
+                            continue;
+                        }
+                        let p = img.get_pixel(px, py).0;
+                        if !is_bg(p[0], p[1], p[2], p[3]) {
+                            fg_votes += 1;
+                        }
+                    }
+                }
+                if fg_votes >= 3 {
+                    mask[gy * gw + gx] = true;
+                }
+            }
+        }
+
+        // Connected components inside the cell: keep the main character body (largest component
+        // weighted toward the horizontal center of the cell) and drop severed snouts/tails on the left/right edges.
+        let mut visited = vec![false; gw * gh];
+        let mut comp_id = vec![0usize; gw * gh];
+        let mut best_comp = 0usize;
+        let mut best_score = 0.0_f64;
+        let mut cur_id = 0usize;
+
+        for gy in 0..gh {
+            for gx in 0..gw {
+                let start = gy * gw + gx;
+                if !mask[start] || visited[start] {
+                    continue;
+                }
+                cur_id += 1;
+                let mut stack = vec![(gx, gy)];
+                visited[start] = true;
+                let mut cells = Vec::new();
+                let mut sum_x = 0.0_f64;
+                while let Some((cx, cy)) = stack.pop() {
+                    comp_id[cy * gw + cx] = cur_id;
+                    cells.push((cx, cy));
+                    sum_x += cx as f64;
+                    for (nx, ny) in [(cx.wrapping_sub(1), cy), (cx + 1, cy), (cx, cy.wrapping_sub(1)), (cx, cy + 1)] {
+                        if nx < gw && ny < gh {
+                            let ni = ny * gw + nx;
+                            if mask[ni] && !visited[ni] {
+                                visited[ni] = true;
+                                stack.push((nx, ny));
+                            }
+                        }
+                    }
+                }
+                let mean_x = sum_x / (cells.len().max(1) as f64);
+                let center_dist = ((mean_x - (gw as f64 * 0.5)).abs() / (gw as f64 * 0.5)).min(1.0);
+                let centrality = 1.15 - 0.75 * center_dist;
+                let score = (cells.len() as f64) * centrality;
+                if score > best_score {
+                    best_score = score;
+                    best_comp = cur_id;
+                }
+            }
+        }
+
+        // Extract despilled pixels belonging to best_comp
+        let mut cell_buf = image::RgbaImage::new(cell_w, ch);
+        let mut min_x = cell_w;
+        let mut min_y = ch;
+        let mut max_x = 0u32;
+        let mut max_y = 0u32;
+
+        for ly in 0..ch {
+            let py = (oy + ly).min(h - 1);
+            if is_divider_row[py as usize] {
+                continue;
+            }
+            for lx in 0..cell_w {
+                let p = img.get_pixel((ox + lx).min(w - 1), py).0;
+                if is_bg(p[0], p[1], p[2], p[3]) {
+                    continue;
+                }
+                let gx = (lx / step) as usize;
+                let gy = (ly / step) as usize;
+                let mut keep = false;
+                for ny in gy.saturating_sub(1)..=(gy + 1).min(gh - 1) {
+                    for nx in gx.saturating_sub(1)..=(gx + 1).min(gw - 1) {
+                        if comp_id[ny * gw + nx] == best_comp && best_comp > 0 {
+                            keep = true;
+                        }
+                    }
+                }
+                if !keep {
+                    continue;
+                }
+                let clean = despill_rgba(p[0], p[1], p[2], p[3]);
+                if clean[3] > 0 {
+                    cell_buf.put_pixel(lx, ly, image::Rgba(clean));
+                    min_x = min_x.min(lx);
+                    min_y = min_y.min(ly);
+                    max_x = max_x.max(lx);
+                    max_y = max_y.max(ly);
+                }
+            }
+        }
+
+        let mut final_frame = image::RgbaImage::new(cw, ch);
+        if min_x <= max_x && min_y <= max_y {
+            let bw = max_x - min_x + 1;
+            let bh = max_y - min_y + 1;
+            let dst_x0 = (cw.saturating_sub(bw)) / 2;
+            let dst_y0 = if lock_baseline { ch.saturating_sub(bh).saturating_sub(4) } else { (ch.saturating_sub(bh)) / 2 };
+            for sy in min_y..=max_y {
+                for sx in min_x..=max_x {
+                    let px = *cell_buf.get_pixel(sx, sy);
+                    if px.0[3] > 0 {
+                        let dx = dst_x0 + (sx - min_x);
+                        let dy = dst_y0 + (sy - min_y);
+                        if dx < cw && dy < ch {
+                            final_frame.put_pixel(dx, dy, px);
+                        }
+                    }
+                }
+            }
+        }
+
+        let frame_path = frames_dir.join(format!("frame_{:04}.png", idx + 1));
+        let mut png_bytes = std::io::Cursor::new(Vec::new());
+        final_frame
+            .write_to(&mut png_bytes, image::ImageFormat::Png)
+            .map_err(|e| ScribblesError::Invalid(format!("Failed to encode {}: {e}", frame_path.display())))?;
+        craft_atomic::atomic_write(&frame_path, &png_bytes.into_inner())?;
+        out.push(frame_path);
+    }
+
+    Ok(out)
+}
+
+/// Reassemble an exploded `#00FF00` chroma-green `parts-sheet.png` into:
+/// 1. Individual transparent full-canvas layer PNGs (`<view_dir>/layers/<part_id>.png`) positioned
+///    on the character's skeleton so `character.cut` / `character.rig` can assemble a `.psd`, `.pcraft`, and `.ecproj`.
+/// 2. `<view_dir>/parts.json` with `plush-9` hierarchy (`torso`, `head`, `ear_L`, `ear_R`, `arm_L`, `arm_R`,
+///    `leg_L`, `leg_R`, `tail`), `[x, y]` joint pivots, and `pins` (`puppet.addPin` / `puppet.follow`).
+pub fn reassemble_parts_sheet(parts_sheet_png: &Path, view_dir: &Path, char_id: &str, view: &str) -> Result<Value> {
+    let decoded = open_rgba_flexible(parts_sheet_png)?;
+    let (w, h) = decoded.dimensions();
+    fs::create_dir_all(view_dir)?;
+    let layers_dir = view_dir.join("layers");
+    fs::create_dir_all(&layers_dir)?;
+
+    // Connected-component labeling on non-green pixels (downsampled 4x for fast island discovery)
+    let step = 4u32;
+    let gw = (w / step).max(1);
+    let gh = (h / step).max(1);
+    let mut mask = vec![false; (gw * gh) as usize];
+    for gy in 0..gh {
+        for gx in 0..gw {
+            let px = decoded.get_pixel(gx * step, gy * step);
+            if !is_chroma_green(px[0], px[1], px[2], px[3]) {
+                mask[(gy * gw + gx) as usize] = true;
+            }
+        }
+    }
+
+    let mut visited = vec![false; (gw * gh) as usize];
+    let mut islands: Vec<([u32; 4], Vec<(u32, u32)>)> = Vec::new();
+    for gy in 0..gh {
+        for gx in 0..gw {
+            let idx = (gy * gw + gx) as usize;
+            if !mask[idx] || visited[idx] {
+                continue;
+            }
+            let mut stack = vec![(gx, gy)];
+            let mut cells = Vec::new();
+            visited[idx] = true;
+            let (mut min_x, mut min_y, mut max_x, mut max_y) = (gx, gy, gx, gy);
+            while let Some((cx, cy)) = stack.pop() {
+                cells.push((cx, cy));
+                min_x = min_x.min(cx);
+                min_y = min_y.min(cy);
+                max_x = max_x.max(cx);
+                max_y = max_y.max(cy);
+                for (nx, ny) in [(cx.saturating_sub(1), cy), ((cx + 1).min(gw - 1), cy), (cx, cy.saturating_sub(1)), (cx, (cy + 1).min(gh - 1))] {
+                    let nidx = (ny * gw + nx) as usize;
+                    if mask[nidx] && !visited[nidx] {
+                        visited[nidx] = true;
+                        stack.push((nx, ny));
+                    }
+                }
+            }
+            // Ignore tiny specks (< 35 grid cells)
+            if cells.len() >= 35 {
+                let x0 = (min_x * step).saturating_sub(step);
+                let y0 = (min_y * step).saturating_sub(step);
+                let x1 = ((max_x + 2) * step).min(w);
+                let y1 = ((max_y + 2) * step).min(h);
+                islands.push(([x0, y0, x1 - x0, y1 - y0], cells));
+            }
+        }
+    }
+
+    // Sort islands by area descending so the largest island is `torso`, then classify the remaining 8 islands by spatial position
+    islands.sort_by_key(|(_, cells)| std::cmp::Reverse(cells.len()));
+    let mut cell_owner = vec![usize::MAX; (gw * gh) as usize];
+    for (owner_idx, (_, cells)) in islands.iter().enumerate() {
+        for &(cx, cy) in cells {
+            cell_owner[(cy * gw + cx) as usize] = owner_idx;
+        }
+    }
+    let boxes: Vec<(usize, [u32; 4])> = islands.iter().enumerate().map(|(i, (b, _))| (i, *b)).collect();
+    let mut assigned: Vec<(&str, Option<&str>, [f64; 2], [f64; 2], usize, [u32; 4])> = Vec::new();
+    if let Some(&(torso_owner, torso_box)) = boxes.first() {
+        assigned.push(("torso", None, [500.0, 560.0], [0.50, 0.50], torso_owner, torso_box));
+        let mut rest: Vec<(usize, [u32; 4])> = boxes.iter().skip(1).take(8).copied().collect();
+        // Two smallest islands are the ears (`ear_L`, `ear_R`)
+        rest.sort_by_key(|(_, b)| b[2] * b[3]);
+        if rest.len() >= 2 {
+            let mut ears = [rest[0], rest[1]];
+            ears.sort_by_key(|(_, b)| b[0] + b[1] / 2);
+            assigned.push(("ear_L", Some("head"), [560.0, 225.0], [0.55, 0.85], ears[0].0, ears[0].1));
+            assigned.push(("ear_R", Some("head"), [680.0, 225.0], [0.45, 0.85], ears[1].0, ears[1].1));
+            rest.drain(0..2);
+        }
+        // Remaining 6 islands: top 2 are `tail` (left) and `head` (right); middle 2 are `arm_L` and `arm_R`; bottom 2 are `leg_L` and `leg_R`
+        rest.sort_by_key(|(_, b)| b[1] + b[3] / 2);
+        if rest.len() >= 2 {
+            let mut top2 = [rest[0], rest[1]];
+            top2.sort_by_key(|(_, b)| b[0]);
+            assigned.push(("tail", Some("torso"), [360.0, 520.0], [0.88, 0.35], top2[0].0, top2[0].1));
+            assigned.push(("head", Some("torso"), [615.0, 480.0], [0.25, 0.82], top2[1].0, top2[1].1));
+            rest.drain(0..2);
+        }
+        if rest.len() >= 2 {
+            let mut mid2 = [rest[0], rest[1]];
+            mid2.sort_by_key(|(_, b)| b[0]);
+            assigned.push(("arm_L", Some("torso"), [455.0, 535.0], [0.70, 0.22], mid2[0].0, mid2[0].1));
+            assigned.push(("arm_R", Some("torso"), [605.0, 540.0], [0.22, 0.22], mid2[1].0, mid2[1].1));
+            rest.drain(0..2);
+        }
+        if rest.len() >= 2 {
+            let mut bot2 = [rest[0], rest[1]];
+            bot2.sort_by_key(|(_, b)| b[0]);
+            assigned.push(("leg_L", Some("torso"), [435.0, 665.0], [0.48, 0.22], bot2[0].0, bot2[0].1));
+            assigned.push(("leg_R", Some("torso"), [575.0, 665.0], [0.48, 0.22], bot2[1].0, bot2[1].1));
+        }
+    }
+
+    let mut extracted = Vec::new();
+    let mut assembled_canvas = image::RgbaImage::new(w, h);
+
+    for (part_id, parent, target_joint, pivot_uv, owner_idx, bbox) in &assigned {
+        let [bx, by, bw, bh] = *bbox;
+
+        // Place each extracted island on a full-canvas (w x h) transparent layer so its local socket `pivot_uv` lands on `target_joint`
+        let mut layer_img = image::RgbaImage::new(w, h);
+        let dst_x0 = (target_joint[0] - f64::from(bw) * pivot_uv[0]).round().clamp(0.0, f64::from(w.saturating_sub(bw))) as u32;
+        let dst_y0 = (target_joint[1] - f64::from(bh) * pivot_uv[1]).round().clamp(0.0, f64::from(h.saturating_sub(bh))) as u32;
+
+        // Track actual non-transparent pixel medians inside this part for accurate Puppet Pins
+        let mut top_row = None::<(f64, f64)>;
+        let mut mid_row = None::<(f64, f64)>;
+        let mut bot_row = None::<(f64, f64)>;
+        for dy in 0..bh {
+            let mut xs = Vec::new();
+            for dx in 0..bw {
+                let sx = bx + dx;
+                let sy = by + dy;
+                let gx = (sx / step).min(gw - 1);
+                let gy = (sy / step).min(gh - 1);
+                let mut belongs = false;
+                for ngy in gy.saturating_sub(1)..=(gy + 1).min(gh - 1) {
+                    for ngx in gx.saturating_sub(1)..=(gx + 1).min(gw - 1) {
+                        if cell_owner[(ngy * gw + ngx) as usize] == *owner_idx {
+                            belongs = true;
+                            break;
+                        }
+                    }
+                    if belongs {
+                        break;
+                    }
+                }
+                if !belongs {
+                    continue;
+                }
+                let src_px = decoded.get_pixel(sx, sy);
+                let rgba = despill_rgba(src_px[0], src_px[1], src_px[2], src_px[3]);
+                if rgba[3] > 64 {
+                    layer_img.put_pixel(dst_x0 + dx, dst_y0 + dy, image::Rgba(rgba));
+                    assembled_canvas.put_pixel(dst_x0 + dx, dst_y0 + dy, image::Rgba(rgba));
+                    if dx >= 6 && dx + 6 < bw && dy >= 6 && dy + 6 < bh {
+                        xs.push(dst_x0 + dx);
+                    }
+                }
+            }
+            if xs.len() >= 12 {
+                let mid_x = f64::from(xs[xs.len() / 2]);
+                let cy = f64::from(dst_y0 + dy);
+                if top_row.is_none() && dy >= bh / 5 {
+                    top_row = Some((mid_x, cy));
+                }
+                if dy >= bh / 2 && mid_row.is_none() {
+                    mid_row = Some((mid_x, cy));
+                }
+                if dy <= (bh * 4) / 5 {
+                    bot_row = Some((mid_x, cy));
+                }
+            }
+        }
+        let pins = match *part_id {
+            "tail" | "leg_L" | "leg_R" => {
+                if let (Some((x1, y1)), Some((x2, y2)), Some((x3, y3))) = (top_row, mid_row, bot_row) {
+                    vec![[x1.round(), y1.round()], [x2.round(), y2.round()], [x3.round(), y3.round()]]
+                } else {
+                    vec![]
+                }
+            }
+            _ => vec![],
+        };
+
+        let mut layer_file = layers_dir.join(format!("{part_id}.png"));
+        let source_dir = view_dir.join("source");
+        fs::create_dir_all(&source_dir)?;
+        let source_file = source_dir.join(format!("{part_id}.png"));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        layer_img
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .map_err(|e| ScribblesError::Invalid(format!("Failed to encode part source {}: {e}", source_file.display())))?;
+        let png_bytes = buf.into_inner();
+        craft_atomic::atomic_write(&source_file, &png_bytes)?;
+        craft_atomic::atomic_write(&layer_file, &png_bytes)?;
+        layer_file = source_file;
+
+        let outline = vec![[dst_x0, dst_y0], [dst_x0 + bw, dst_y0], [dst_x0 + bw, dst_y0 + bh], [dst_x0, dst_y0 + bh]];
+        extracted.push(ExtractedPart {
+            id: (*part_id).to_string(),
+            parent: parent.map(str::to_string),
+            file: layer_file,
+            bounds: [dst_x0, dst_y0, bw, bh],
+            joint: *target_joint,
+            pins: pins.clone(),
+            outline,
+        });
+    }
+
+    // Order back-to-front (`tail`, `leg_L`, `arm_L`, `torso`, `leg_R`, `arm_R`, `head`, `ear_L`, `ear_R`)
+    let z_order = ["tail", "leg_L", "arm_L", "torso", "leg_R", "arm_R", "head", "ear_L", "ear_R"];
+    extracted.sort_by_key(|p| z_order.iter().position(|&z| z == p.id).unwrap_or(99));
+
+    let drawing_name = format!("{char_id}-{view}-drawing.png");
+    let drawing_path = view_dir.join(&drawing_name);
+    let mut draw_buf = std::io::Cursor::new(Vec::new());
+    if assembled_canvas.write_to(&mut draw_buf, image::ImageFormat::Png).is_ok() {
+        let _ = craft_atomic::atomic_write(&drawing_path, &draw_buf.into_inner());
+    }
+
+    let parts_json_val: Vec<Value> = extracted
+        .iter()
+        .map(|p| {
+            let mut obj = json!({
+                "id": p.id,
+                "parent": p.parent,
+                "source": p.file,
+                "file": p.file,
+                "bounds": p.bounds,
+                "joint": p.joint,
+                "outline": p.outline,
+            });
+            if !p.pins.is_empty() {
+                obj["pins"] = json!(p.pins);
+            }
+            obj
+        })
+        .collect();
+
+    let parts_doc = json!({
+        "image": drawing_name,
+        "view": view,
+        "size": [w, h],
+        "skeleton": "plush-9",
+        "animation_style": "cutout_2_5d",
+        "status": "reassembled in Rust from chroma-green parts-sheet.png; ready for character.cut and character.rig",
+        "parts": parts_json_val,
+    });
+    let parts_json_path = view_dir.join("parts.json");
+    craft_atomic::atomic_write(&parts_json_path, &serde_json::to_vec_pretty(&parts_doc).unwrap_or_default())?;
+
+    Ok(json!({
+        "ok": true,
+        "character": char_id,
+        "view": view,
+        "animation_style": "cutout_2_5d",
+        "parts_sheet": parts_sheet_png,
+        "parts_json": parts_json_path,
+        "layers_dir": layers_dir,
+        "parts_count": extracted.len(),
+        "parts": parts_json_val,
+    }))
+}
+
+/// Build an articulated 2.5D/3D Blender scene (`.blend` + `.glb` + `.anim.json`) with an `ARMATURE`
+/// (`plush-9` bones + `idle`, `walk_bounce`, and `jump` action keyframes) from the reassembled
+/// `parts.json` and layer PNGs, and optionally launch Blender interactively.
+pub fn build_blender_rig_from_parts(project_root: &Path, char_id: &str, view: &str, open_gui: bool) -> Result<Value> {
+    let char_dir = project_root.join("assets/characters").join(char_id);
+    let view_dir = char_dir.join(view);
+    let parts_json = view_dir.join("parts.json");
+    if !parts_json.is_file() {
+        return Err(ScribblesError::Invalid(format!("No parts.json found at {}; run scribbles.reassemble first", parts_json.display())));
+    }
+    let dir_3d = char_dir.join("3d");
+    fs::create_dir_all(&dir_3d)?;
+    let out_blend = dir_3d.join(format!("{char_id}-moppet-rig.blend"));
+    let out_glb = dir_3d.join(format!("{char_id}-moppet-rig.glb"));
+    let script_path = dir_3d.join("build_moppet_blender_rig.py");
+
+    let py_script = r#"import bpy, json, math, os, sys
+from mathutils import Matrix, Vector
+
+argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+parts_json_path = argv[0]
+out_blend_path = argv[1]
+out_glb_path = argv[2] if len(argv) > 2 else ""
+
+with open(parts_json_path, "r") as f:
+    doc = json.load(f)
+
+w, h = doc.get("size", [1024, 1024])
+parts = doc.get("parts", [])
+view_dir = os.path.dirname(os.path.abspath(parts_json_path))
+
+bpy.ops.wm.read_factory_settings(use_empty=True)
+scene = bpy.context.scene
+scene.render.fps = 24
+scene.frame_start = 1
+scene.frame_end = 48
+
+# Create Collections
+col_rig = bpy.data.collections.new("COL_Rig")
+col_char = bpy.data.collections.new("COL_Character")
+scene.collection.children.link(col_rig)
+scene.collection.children.link(col_char)
+
+# Create Armature (plush-9 hierarchy)
+arm_data = bpy.data.armatures.new("MoppetArmature")
+arm_obj = bpy.data.objects.new("MoppetRig", arm_data)
+col_rig.objects.link(arm_obj)
+bpy.context.view_layer.objects.active = arm_obj
+bpy.ops.object.mode_set(mode='EDIT')
+
+bones = {}
+scale = 2.0 / float(max(w, h))
+
+for idx, p in enumerate(parts):
+    pid = p["id"]
+    jx, jy = p.get("joint", [w * 0.5, h * 0.5])
+    bx = (jx - w * 0.5) * scale
+    bz = (h * 0.5 - jy) * scale
+    bone = arm_data.edit_bones.new(pid)
+    bone.head = (bx, 0.0, bz)
+    bone.tail = (bx, 0.0, bz + 0.16)
+    bones[pid] = bone
+
+for p in parts:
+    pid = p["id"]
+    parent_id = p.get("parent")
+    if parent_id and parent_id in bones:
+        bones[pid].parent = bones[parent_id]
+
+bpy.ops.object.mode_set(mode='OBJECT')
+bpy.context.view_layer.update()
+
+# Create 2.5D Z-layered textured planes for each cut part in exact anatomical registration
+for z_idx, p in enumerate(parts):
+    pid = p["id"]
+    # Prefer untrimmed full-canvas source PNG if present; otherwise place trimmed layer PNG at its bounds
+    src_path = p.get("source")
+    if src_path and not os.path.isabs(src_path):
+        src_path = os.path.join(view_dir, src_path)
+    file_path = p.get("file")
+    if file_path and not os.path.isabs(file_path):
+        file_path = os.path.join(view_dir, file_path)
+
+    y_offset = -0.025 * z_idx
+    bounds = p.get("bounds")
+    if src_path and os.path.isfile(src_path):
+        img_path = src_path
+        pw, ph = w * scale, h * scale
+        cx, cz = 0.0, 0.0
+    elif file_path and os.path.isfile(file_path) and isinstance(bounds, list) and len(bounds) == 4:
+        img_path = file_path
+        bx0, by0, bw0, bh0 = [float(v) for v in bounds]
+        pw = max(0.02, bw0 * scale)
+        ph = max(0.02, bh0 * scale)
+        cx = ((bx0 + bw0 * 0.5) - w * 0.5) * scale
+        cz = (h * 0.5 - (by0 + bh0 * 0.5)) * scale
+    elif file_path and os.path.isfile(file_path):
+        img_path = file_path
+        pw, ph = w * scale, h * scale
+        cx, cz = 0.0, 0.0
+    else:
+        continue
+
+    bpy.ops.mesh.primitive_plane_add(size=1.0, location=(cx, y_offset, cz), rotation=(math.pi / 2.0, 0.0, 0.0))
+    plane = bpy.context.active_object
+    plane.name = f"Part_{pid}"
+    plane.scale = (pw, ph, 1.0)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+    for c in list(plane.users_collection):
+        c.objects.unlink(plane)
+    col_char.objects.link(plane)
+
+    mat = bpy.data.materials.new(name=f"Mat_{pid}")
+    mat.use_nodes = True
+    if hasattr(mat, 'blend_method'):
+        mat.blend_method = 'CLIP'
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    bsdf = nodes.get("Principled BSDF")
+    tex = nodes.new("ShaderNodeTexImage")
+    tex.image = bpy.data.images.load(img_path)
+    if bsdf:
+        links.new(bsdf.inputs["Base Color"], tex.outputs["Color"])
+        if "Alpha" in bsdf.inputs:
+            links.new(bsdf.inputs["Alpha"], tex.outputs["Alpha"])
+    plane.data.materials.append(mat)
+
+    # Parent to bone while preserving exact world-space rest registration
+    world_mat = plane.matrix_world.copy()
+    plane.parent = arm_obj
+    plane.parent_type = 'BONE'
+    plane.parent_bone = pid
+    pbone = arm_obj.pose.bones.get(pid)
+    if pbone:
+        bone_world = arm_obj.matrix_world @ pbone.matrix
+        plane.matrix_parent_inverse = bone_world.inverted() @ Matrix.Translation((0.0, -(pbone.bone.tail_local - pbone.bone.head_local).length, 0.0))
+        plane.matrix_world = world_mat
+
+# Author multiple named 3D/2.5D actions (walk_bounce, idle, jump) on MoppetRig
+bpy.context.view_layer.objects.active = arm_obj
+bpy.ops.object.mode_set(mode='POSE')
+if not arm_obj.animation_data:
+    arm_obj.animation_data_create()
+
+def key_cycle(action_name, bob_amp, swing_amp, jump_mode=False):
+    act = bpy.data.actions.new(name=action_name)
+    act.use_fake_user = True
+    arm_obj.animation_data.action = act
+    for frame in [1, 13, 25, 37, 48]:
+        scene.frame_set(frame)
+        phase = ((frame - 1) / 12.0) * math.pi
+        for pbone in arm_obj.pose.bones:
+            pbone.rotation_mode = 'XYZ'
+            pbone.location = (0.0, 0.0, 0.0)
+            pbone.rotation_euler = (0.0, 0.0, 0.0)
+            if pbone.name == "torso":
+                pbone.location.z = bob_amp * (max(0.0, math.sin(phase * 0.5)) if jump_mode else abs(math.sin(phase)))
+                pbone.rotation_euler.y = 0.05 * math.sin(phase)
+                pbone.keyframe_insert(data_path="location", frame=frame)
+                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
+            elif pbone.name == "head":
+                pbone.rotation_euler.y = -0.08 * math.sin(phase)
+                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
+            elif pbone.name in ("leg_L", "arm_R"):
+                pbone.rotation_euler.y = swing_amp * math.sin(phase)
+                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
+            elif pbone.name in ("leg_R", "arm_L"):
+                pbone.rotation_euler.y = -swing_amp * math.sin(phase)
+                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
+            elif pbone.name == "tail":
+                pbone.rotation_euler.y = (swing_amp * 0.8) * math.cos(phase)
+                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
+    return act
+
+key_cycle("idle", 0.015, 0.08, False)
+key_cycle("jump", 0.14, 0.34, True)
+walk_act = key_cycle("walk_bounce", 0.04, 0.28, False)
+arm_obj.animation_data.action = walk_act
+
+bpy.ops.object.mode_set(mode='OBJECT')
+
+# Camera & warm studio lighting
+cam_data = bpy.data.cameras.new("StudioCamera")
+cam_obj = bpy.data.objects.new("StudioCamera", cam_data)
+cam_obj.location = (0.0, -4.2, 0.0)
+cam_obj.rotation_euler = (math.pi / 2.0, 0.0, 0.0)
+scene.collection.objects.link(cam_obj)
+scene.camera = cam_obj
+
+light_data = bpy.data.lights.new(name="KeyLight", type='AREA')
+light_data.energy = 250.0
+light_obj = bpy.data.objects.new(name="KeyLight", object_data=light_data)
+light_obj.location = (1.5, -2.5, 2.0)
+scene.collection.objects.link(light_obj)
+
+if out_glb_path:
+    try:
+        bpy.ops.export_scene.gltf(filepath=out_glb_path, export_format='GLB', export_animations=True)
+        print("SAVED_GLB:", out_glb_path)
+    except Exception as e:
+        print("GLB_WARN:", e)
+
+bpy.ops.wm.save_as_mainfile(filepath=out_blend_path)
+print("SAVED_BLEND:", out_blend_path)
+"#;
+
+    craft_atomic::atomic_write(&script_path, py_script.as_bytes())?;
+    let blender = find_binary("blender").ok_or_else(|| ScribblesError::Tool("blender".into(), "blender not found on PATH".into()))?;
+    let output = Command::new(&blender)
+        .args(["--background", "--python"])
+        .arg(&script_path)
+        .arg("--")
+        .arg(&parts_json)
+        .arg(&out_blend)
+        .arg(&out_glb)
+        .output()
+        .map_err(|e| ScribblesError::Tool("blender".into(), e.to_string()))?;
+
+    if !output.status.success() || !out_blend.is_file() {
+        return Err(ScribblesError::Tool("blender".into(), format!("{}{}", String::from_utf8_lossy(&output.stderr), String::from_utf8_lossy(&output.stdout))));
+    }
+
+    // Write 3D / 2.5D manifest & clip descriptors so Magic Studio's 3D / 2.5D inspector discovers the rig and clips
+    let glb_opt = out_glb.is_file().then_some(&out_glb);
+    for (clip_id, clip_name, cat) in
+        [("walk_bounce", "Walk Bounce (2.5D/3D)", "locomotion"), ("idle", "Idle Breathe (2.5D/3D)", "idle"), ("jump", "Jump Arc (2.5D/3D)", "locomotion")]
+    {
+        let clip_doc = json!({
+            "id": clip_id,
+            "name": clip_name,
+            "animation_style": "cutout_2_5d",
+            "source": "blender_moppet_rig",
+            "category": cat,
+            "duration": 2.0,
+            "in_place": true,
+            "glb": glb_opt,
+            "blend": out_blend,
+        });
+        let clip_path = dir_3d.join(format!("{clip_id}.anim.json"));
+        let _ = craft_atomic::atomic_write(&clip_path, &serde_json::to_vec_pretty(&clip_doc).unwrap_or_default());
+    }
+    let tripo_manifest = json!({
+        "character": char_id,
+        "animation_style": "cutout_2_5d",
+        "base_model_glb": glb_opt,
+        "blend": out_blend,
+        "rig_type": "plush-9",
+        "skeleton_preset": "plush-9",
+        "animate_in_place": true,
+    });
+    let _ = craft_atomic::atomic_write(&dir_3d.join("tripo.json"), &serde_json::to_vec_pretty(&tripo_manifest).unwrap_or_default());
+
+    if open_gui {
+        let _ = Command::new(&blender)
+            .arg(&out_blend)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+
+    Ok(json!({
+        "ok": true,
+        "character": char_id,
+        "view": view,
+        "animation_style": "cutout_2_5d",
+        "blend": out_blend,
+        "glb": glb_opt,
+        "parts_json": parts_json,
+        "opened_in_blender": open_gui,
+    }))
+}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  AnimationStyle,
   CharacterMetaResponse,
   CharacterPart,
   CharacterSpriteSummary,
@@ -9,7 +10,7 @@ import {
 } from "../api";
 import { AnimationPoseInspector } from "./animation/AnimationPoseInspector";
 import { AnimationStage, BoneNode, SpriteAction } from "./animation/AnimationStage";
-import { AnimationTheatre } from "./animation/AnimationTheatre";
+import { AnimationTheatre, RigKeys } from "./animation/AnimationTheatre";
 
 interface AnimationViewProps {
   projectPath: string;
@@ -20,15 +21,6 @@ interface AnimationViewProps {
   onRefresh: () => Promise<void>;
   onToast: (msg: string) => void;
 }
-
-const DEFAULT_BONES: BoneNode[] = [
-  { id: "head", label: "head", x: 192, y: 165, parent: "torso" },
-  { id: "arm_R", label: "arm_R", x: 120, y: 265, parent: "torso" },
-  { id: "arm_L", label: "arm_L", x: 264, y: 265, parent: "torso" },
-  { id: "torso", label: "torso", x: 192, y: 280, parent: null },
-  { id: "leg_R", label: "leg_R", x: 160, y: 365, parent: "torso" },
-  { id: "leg_L", label: "leg_L", x: 224, y: 365, parent: "torso" },
-];
 
 export const AnimationView: React.FC<AnimationViewProps> = ({
   projectPath,
@@ -45,15 +37,13 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
   const [showPath, setShowPath] = useState<boolean>(true);
   const [showGrid, setShowGrid] = useState<boolean>(false);
   const [show3D, setShow3D] = useState<boolean>(false);
+  const [animationStyle, setAnimationStyle] = useState<AnimationStyle>("cutout_2_5d");
   const [zoomLevel, setZoomLevel] = useState<number>(1);
 
   // Shared spline path & timing state (editable directly on stage HUD or in Path drawer)
-  const [pathPoints, setPathPoints] = useState<Array<[number, number]>>([
-    [110, 340],
-    [205, 275],
-    [305, 325],
-  ]);
-  const [pathPointIdx, setPathPointIdx] = useState<number>(1);
+  const [penActive, setPenActive] = useState<boolean>(false);
+  const [pathPoints, setPathPoints] = useState<Array<[number, number]>>([]);
+  const [pathPointIdx, setPathPointIdx] = useState<number>(0);
   const [pathDuration, setPathDuration] = useState<number>(2.5);
   const [sizeStart, setSizeStart] = useState<number>(100);
   const [sizeEnd, setSizeEnd] = useState<number>(100);
@@ -82,6 +72,9 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
   const [duration, setDuration] = useState<number>(0.67);
 
   const [theatreTab, setTheatreTab] = useState<"theatre" | "keys" | "curves">("theatre");
+  const [rigKeys, setRigKeys] = useState<RigKeys | null>(null);
+  const [keysError, setKeysError] = useState<string>("");
+  const [keysRevision, setKeysRevision] = useState<number>(0);
 
   const [selectedBone, setSelectedBone] = useState<string>("torso");
   const [rotation, setRotation] = useState<number>(0);
@@ -116,6 +109,26 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
     setSelectedCharId(charId);
     setSelectedView(view);
     onSelectCharacter?.(charId);
+    setPathPoints([]);
+    setPathPointIdx(0);
+    setPathDuration(2.5);
+    setSizeStart(100);
+    setSizeEnd(100);
+    try {
+      const savedPath = await executeCommand<{
+        saved: boolean;
+        points: Array<[number, number]>;
+        duration?: number;
+        size_start?: number;
+        size_end?: number;
+      }>("character.path", { character: charId, view });
+      setPathPoints(savedPath.points);
+      if (savedPath.duration !== undefined) setPathDuration(savedPath.duration);
+      if (savedPath.size_start !== undefined) setSizeStart(savedPath.size_start);
+      if (savedPath.size_end !== undefined) setSizeEnd(savedPath.size_end);
+    } catch (err) {
+      onToast(String(err));
+    }
     try {
       const [viewRes, m] = await Promise.all([
         executeCommand<{
@@ -130,6 +143,17 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
       ]);
 
       setMeta(m);
+      const detectedStyle: AnimationStyle =
+        m?.animation_style ||
+        (m?.tripo_3d?.available && (!m?.views || m.views.length === 0)
+          ? "rig_3d"
+          : m?.views?.some((v) => v.rigged || v.cut || (v.parts && v.parts.length > 0))
+            ? "cutout_2_5d"
+            : (m?.sprites && m.sprites.length > 0)
+              ? "sprite_2d"
+              : "cutout");
+      setAnimationStyle(detectedStyle);
+      setShow3D(detectedStyle === "rig_3d");
       let spriteList = m?.sprites || viewRes?.selected?.sprites || [];
       const viewObj = m?.views?.find((v) => v.view === view) || m?.views?.[0];
 
@@ -247,24 +271,40 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
   const activeViewSummary =
     meta?.views?.find((v) => v.view === selectedView) || meta?.views?.[0];
   const parts: CharacterPart[] = activeViewSummary?.parts || meta?.parts || [];
+  const isRigged = !!activeViewSummary?.rigged;
+
+  useEffect(() => {
+    setRigKeys(null);
+    setKeysError("");
+    if (!selectedCharId || !isRigged || animationStyle === "sprite_2d") return;
+    let cancelled = false;
+    const action = activeActionName && activeActionName !== "rest" ? { action: activeActionName } : {};
+    executeCommand<RigKeys>("character.keys", { character: selectedCharId, view: selectedView, ...action })
+      .then((keys) => {
+        if (!cancelled) setRigKeys(keys);
+      })
+      .catch((err) => {
+        if (!cancelled) setKeysError(String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCharId, selectedView, activeActionName, animationStyle, isRigged, keysRevision]);
   const drawingSize: [number, number] =
     activeViewSummary?.size && activeViewSummary.size.length === 2
       ? activeViewSummary.size
       : [384, 512];
 
-  const bones: BoneNode[] =
-    parts.length > 0
-      ? parts
-          .filter((p) => Array.isArray(p.joint) && p.joint.length === 2)
-          .map((p) => ({
-            id: p.id,
-            label: p.name || p.id,
-            x: p.joint![0],
-            y: p.joint![1],
-            parent: p.parent ?? null,
-            outline: p.outline,
-          }))
-      : DEFAULT_BONES;
+  const bones: BoneNode[] = parts
+    .filter((p) => Array.isArray(p.joint) && p.joint.length === 2)
+    .map((p) => ({
+      id: p.id,
+      label: p.name || p.id,
+      x: p.joint![0],
+      y: p.joint![1],
+      parent: p.parent ?? null,
+      outline: p.outline,
+    }));
 
   const commitBoneProperty = async (prop: string, val: number) => {
     try {
@@ -373,6 +413,26 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
     }
   };
 
+  const handleSavePath = async () => {
+    setBusy(true);
+    try {
+      await executeCommand("character.save_path", {
+        character: selectedCharId,
+        view: selectedView,
+        points: pathPoints,
+        duration: pathDuration,
+        size_start: sizeStart,
+        size_end: sizeEnd,
+      });
+      setKeysRevision((n) => n + 1);
+      onToast(`Saved motion path to the rig (${pathPoints.length} points)`);
+    } catch (err) {
+      onToast(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleRenderClip = async () => {
     setBusy(true);
     try {
@@ -432,6 +492,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
       <AnimationStage
         selectedCharId={selectedCharId}
         selectedView={selectedView}
+        animationStyle={animationStyle}
         selectedSprite={selectedSprite}
         activeActionName={activeActionName}
         sprites={sprites}
@@ -447,6 +508,15 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
         }}
         showMarks={showMarks}
         onToggleMarks={() => setShowMarks((v) => !v)}
+        penActive={penActive}
+        onTogglePen={() => {
+          setShowPath(true);
+          setPenActive((v) => !v);
+        }}
+        onAddPathPoint={(point) => {
+          setPathPointIdx(pathPoints.length);
+          setPathPoints((prev) => [...prev, point]);
+        }}
         showPath={showPath}
         onTogglePath={() => setShowPath((v) => !v)}
         showGrid={showGrid}
@@ -475,26 +545,18 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
         sizeEnd={sizeEnd}
         onChangeSizeEnd={setSizeEnd}
         onClearPath={() => {
-          setPathPoints([
-            [110, 340],
-            [205, 275],
-            [305, 325],
-          ]);
+          setPathPoints([]);
+          setPathPointIdx(0);
           setSizeStart(100);
           setSizeEnd(100);
-          onToast("Cleared motion path");
         }}
         onUndoPath={() => {
-          setPathPoints((prev) =>
-            prev.map((pt, i) => (i === pathPointIdx ? [192, 290] : pt))
-          );
-          onToast(`Reverted Point ${pathPointIdx + 1}`);
+          setPathPointIdx(Math.max(0, pathPoints.length - 2));
+          setPathPoints((prev) => prev.slice(0, -1));
         }}
         onApplyPath={() => {
           setDuration(pathDuration);
-          onToast(
-            `Applied spline path (${pathX}, ${pathY}) · ${pathDuration}s · ${sizeStart}% → ${sizeEnd}%`
-          );
+          void handleSavePath();
         }}
         isPlaying={isPlaying}
         onTogglePlay={() => setIsPlaying((p) => !p)}
@@ -510,7 +572,12 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
       <AnimationPoseInspector
         selectedCharId={selectedCharId}
         selectedView={selectedView}
+        animationStyle={animationStyle}
         onSelectView={(v) => void selectCharacter(selectedCharId, v)}
+        onChangeAnimationStyle={(st) => {
+          setAnimationStyle(st);
+          setShow3D(st === "rig_3d");
+        }}
         selectedBone={selectedBone}
         onSelectBone={setSelectedBone}
         meta={meta}
@@ -608,7 +675,9 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
         onSelectTheatreTab={setTheatreTab}
         selectedBone={selectedBone}
         onSelectBone={setSelectedBone}
-        parts={parts}
+        rigKeys={rigKeys}
+        keysError={keysError}
+        isSpriteCycle={animationStyle === "sprite_2d"}
         currentTime={currentTime}
         duration={duration}
         onSeek={(t) => {
@@ -628,7 +697,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
             void handleTriggerAction("rest");
           }
         }}
-        onSaveMotion={() => void handleRenderClip()}
+        onSaveMotion={() => void handleSavePath()}
         onToast={onToast}
       />
     </section>
