@@ -1006,6 +1006,71 @@ pub fn reassemble_parts_sheet(parts_sheet_png: &Path, view_dir: &Path, char_id: 
     }))
 }
 
+/// Canonical 10 Workshop Moppets (`assets/characters/moppets/`) with their locked visual designs and reference images.
+/// Lore: Electronic devices with AI hearts and brains that act like autonomous puppets.
+pub const LOCKED_MOPPETS: &[(&str, &str, &str, &str)] = &[
+    (
+        "tabby",
+        "Tabby",
+        "assets/characters/tripo-input/18-moppet-tabby.png",
+        "Tabby Cat (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): 4:3 silver-framed LCD screen head with glowing cyan pixel eyes and pink felt nose/whiskers, sitting cat body wrapped in colorful rainbow ribbon cables and patchwork fabric socks.",
+    ),
+    (
+        "toasty",
+        "Toasty",
+        "assets/characters/tripo-input/19-moppet-toasty.png",
+        "Toasty Dog (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): brushed stainless-steel 2-slice toaster body on four curved chrome tubular legs with warm orange heating-element underglow (its AI heart), golden-tan plush dog head with floppy felt ears, black button nose, and toaster lever tail.",
+    ),
+    (
+        "clank",
+        "Clank",
+        "assets/characters/tripo-input/20-moppet-clank.png",
+        "Clank Bear (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): tall big-hearted biped with beige CRT monitor head showing green pixel eyes/smile, weathered teal PC tower torso wrapped in grey duct tape, canvas work-shirt arms, khaki pants, and work boots.",
+    ),
+    (
+        "beep",
+        "Beep",
+        "assets/characters/tripo-input/21-moppet-beep.png",
+        "Beep Rodent (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): tiny 1990s beige two-button computer mouse body with pink-lined rounded mouse ears, black bead eyes, pink nose, wire whiskers, and coiled PS/2 cable tail.",
+    ),
+    (
+        "babel",
+        "Babel",
+        "assets/characters/tripo-input/22-moppet-babel.png",
+        "Babel Owl (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): vertical wood-grain vintage tabletop radio body with two large round tuning-dial eyes, tiny yellow beak between the dials, round metal speaker grille belly, twin telescoping rabbit-ear antennas, and brass claw feet.",
+    ),
+    (
+        "scribe",
+        "Scribe",
+        "assets/characters/tripo-input/23-moppet-scribe.png",
+        "Scribe Rabbit (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): vintage black manual typewriter chassis body with round metal keycaps, grey rabbit head rising from the carriage with buck teeth and long pink-lined ribbon ears.",
+    ),
+    (
+        "flash",
+        "Flash",
+        "assets/characters/tripo-input/24-moppet-flash.png",
+        "Flash Monkey (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): silver-and-black 35mm SLR camera head with large glass lens center and glowing warm lightbulb flash on top, tan burlap/fleece monkey body in a miniature safari jacket.",
+    ),
+    (
+        "vee",
+        "Vee",
+        "assets/characters/tripo-input/25-moppet-vee.png",
+        "Vee Fox (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): upright black VHS cassette / deck body with orange-brown flocked felt fox head, cassette-reel eyes, hinged jaw lined with white keyboard-key teeth, and pointed felt ears.",
+    ),
+    (
+        "watt",
+        "Watt",
+        "assets/characters/tripo-input/26-moppet-watt.png",
+        "Watt Squirrel (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): vertical beige 6-outlet power-strip body with glowing orange rocker switch on chest (its AI heart), plush brown squirrel head, and a huge bushy tail made of rainbow insulated copper wires.",
+    ),
+    (
+        "chip",
+        "Chip",
+        "assets/characters/tripo-input/27-moppet-chip.png",
+        "Chip Robin (Electronic Device with AI Heart & Brain acting as an Autonomous Puppet): geometric polyhedral origami/plastic bird body in purple, yellow, and teal with green printed circuit-board (PCB) wings and crest, round blue-ringed eyes, yellow beak, and thin orange wire legs.",
+    ),
+];
+
 /// A single asset item in a Storyboard Master Pack (`storyboard-pack.json`), carrying its
 /// deterministic ID marker (`<ID>__<slot>`), target page/slot, prompt, references, and animation style.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -1020,6 +1085,7 @@ pub struct StoryboardPackItem {
     pub prompt: String,
     pub animation_style: String,
     pub references: Vec<String>,
+    pub reference_image: Option<String>,
     pub existing_image: Option<String>,
 }
 
@@ -1057,6 +1123,63 @@ pub fn classify_animation_style(design: &str, prompt: &str) -> String {
     }
 }
 
+/// Compose 1 to N reference image files into a single clean 16:9 (`1920x1080`) composite reference sheet (`PNG`).
+/// When a single image is passed, it is fitted proportionally into the 1920x1080 canvas; when multiple
+/// ideas/references (e.g. a Location + Character(s) or the 10 Workshop Moppets) are passed, they are tiled
+/// into a clean even grid on a neutral studio background so Google Flow receives a single unified reference image.
+pub fn build_composite_reference(sources: &[PathBuf], out_png: &Path) -> Result<PathBuf> {
+    let valid: Vec<image::RgbaImage> = sources.iter().filter(|p| p.is_file()).filter_map(|p| open_rgba_flexible(p).ok()).collect();
+    if valid.is_empty() {
+        return Err(ScribblesError::Invalid("No valid source images found to build a composite reference".into()));
+    }
+    let (canvas_w, canvas_h) = (1920u32, 1080u32);
+    let mut canvas = image::RgbaImage::from_pixel(canvas_w, canvas_h, image::Rgba([28, 30, 36, 255]));
+
+    let n = valid.len();
+    let cols = match n {
+        1 => 1,
+        2 => 2,
+        3 | 4 => 2,
+        5 | 6 => 3,
+        7..=9 => 3,
+        _ => 5,
+    };
+    let rows = (n as u32).div_ceil(cols);
+    let pad = 16u32;
+    let cell_w = (canvas_w.saturating_sub(pad * (cols + 1))) / cols.max(1);
+    let cell_h = (canvas_h.saturating_sub(pad * (rows + 1))) / rows.max(1);
+
+    for (idx, src) in valid.iter().enumerate() {
+        let col = (idx as u32) % cols;
+        let row = (idx as u32) / cols;
+        if row >= rows {
+            break;
+        }
+        let (sw, sh) = src.dimensions();
+        if sw == 0 || sh == 0 {
+            continue;
+        }
+        let scale = (f64::from(cell_w) / f64::from(sw)).min(f64::from(cell_h) / f64::from(sh));
+        let tw = ((f64::from(sw) * scale).round() as u32).clamp(1, cell_w);
+        let th = ((f64::from(sh) * scale).round() as u32).clamp(1, cell_h);
+        let resized = image::imageops::resize(src, tw, th, image::imageops::FilterType::Triangle);
+
+        let ox = pad + col * (cell_w + pad) + (cell_w - tw) / 2;
+        let oy = pad + row * (cell_h + pad) + (cell_h - th) / 2;
+        image::imageops::overlay(&mut canvas, &resized, i64::from(ox), i64::from(oy));
+    }
+
+    if let Some(parent) = out_png.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut buf = std::io::Cursor::new(Vec::new());
+    canvas
+        .write_to(&mut buf, image::ImageFormat::Png)
+        .map_err(|e| ScribblesError::Invalid(format!("Failed to encode composite {}: {e}", out_png.display())))?;
+    craft_atomic::atomic_write(out_png, &buf.into_inner())?;
+    Ok(out_png.to_path_buf())
+}
+
 /// Scan `source_dir` (defaults to `~/Downloads`) and `<project_root>/storyboard/` for ID-marked
 /// storyboard assets (`<CODE>__<slot>.png` such as `L01__world_stage_image.png`, `S04__hero_image.png`,
 /// `C01__char_original_image.png`, or a downloaded `storyboard-handoff.json`).
@@ -1080,38 +1203,53 @@ pub fn ingest_id_marked_assets(project_root: &Path, source_dir: Option<&Path>) -
     }
 
     let mut ingested = Vec::new();
+    let mut candidate_files = Vec::new();
+
     for dir in dirs {
         let Ok(entries) = fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.is_file() {
-                continue;
+            if path.is_file() {
+                candidate_files.push(path);
+            } else if path.is_dir() {
+                // Also scan subdirectories (e.g. unzipped folders in ~/Downloads)
+                if let Ok(sub_entries) = fs::read_dir(&path) {
+                    for sub in sub_entries.flatten() {
+                        let sub_path = sub.path();
+                        if sub_path.is_file() {
+                            candidate_files.push(sub_path);
+                        }
+                    }
+                }
             }
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
-            let Some(ext) = path.extension().and_then(|s| s.to_str()) else { continue };
-            if !ext.eq_ignore_ascii_case("png") && !ext.eq_ignore_ascii_case("jpg") && !ext.eq_ignore_ascii_case("jpeg") {
-                continue;
-            }
-            let Some((raw_code, raw_slot)) = stem.split_once("__") else { continue };
-            let code = raw_code.trim().to_ascii_uppercase();
-            let slot_clean = raw_slot.split(|c: char| c == ' ' || c == '(').next().unwrap_or(raw_slot).trim().to_ascii_lowercase();
-            if code.is_empty() || slot_clean.is_empty() {
-                continue;
-            }
-            let id_marker = format!("{code}__{slot_clean}");
-            let folder_id = sanitize_id(&id_marker);
-            let category = if code.starts_with('L') {
-                "backgrounds"
-            } else if code.starts_with('C') {
-                "characters"
-            } else {
-                "images"
-            };
-            let dest_dir = project_root.join("assets").join(category).join(&folder_id);
-            let dest_png = dest_dir.join(format!("{id_marker}.png"));
-            if ensure_valid_png(&path, &dest_png).is_ok() {
-                ingested.push((id_marker, code, slot_clean, dest_png));
-            }
+        }
+    }
+
+    for path in candidate_files {
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+        let Some(ext) = path.extension().and_then(|s| s.to_str()) else { continue };
+        if !ext.eq_ignore_ascii_case("png") && !ext.eq_ignore_ascii_case("jpg") && !ext.eq_ignore_ascii_case("jpeg") {
+            continue;
+        }
+        let Some((raw_code, raw_slot)) = stem.split_once("__") else { continue };
+        let code = raw_code.trim().to_ascii_uppercase();
+        let slot_clean = raw_slot.split(|c: char| c == ' ' || c == '(' || c == '.').next().unwrap_or(raw_slot).trim().to_ascii_lowercase();
+        if code.is_empty() || slot_clean.is_empty() {
+            continue;
+        }
+        let id_marker = format!("{code}__{slot_clean}");
+        let folder_id = sanitize_id(&id_marker);
+        let category = if code.starts_with('L') {
+            "backgrounds"
+        } else if code.starts_with('C') {
+            "characters"
+        } else {
+            "images"
+        };
+        let dest_dir = project_root.join("assets").join(category).join(&folder_id);
+        let dest_png = dest_dir.join(format!("{id_marker}.png"));
+        if ensure_valid_png(&path, &dest_png).is_ok() {
+            ingested.push((id_marker, code, slot_clean, dest_png));
         }
     }
     ingested.sort_by(|a, b| a.0.cmp(&b.0));

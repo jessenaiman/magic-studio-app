@@ -48,7 +48,8 @@ fn push_scene_steps(s: &Session, stories: &HashMap<u64, u64>, frames: &Labels, p
             }
         }
     }
-    if let (Some(label), Some(text)) = (p.get("label").and_then(Value::as_str), p.get("text").and_then(Value::as_str)) {
+    let slot_or_label = p.get("slot").or_else(|| p.get("label")).and_then(Value::as_str);
+    if let (Some(label), Some(text)) = (slot_or_label, p.get("text").and_then(Value::as_str)) {
         text_entries.push((label, text));
     }
     for (label, text) in text_entries {
@@ -71,7 +72,7 @@ fn push_scene_steps(s: &Session, stories: &HashMap<u64, u64>, frames: &Labels, p
             }
         }
     }
-    if let (Some(label), Some(raw)) = (p.get("label").and_then(Value::as_str), p.get("image").and_then(Value::as_str)) {
+    if let (Some(label), Some(raw)) = (slot_or_label, p.get("image").and_then(Value::as_str)) {
         image_entries.push((label, raw));
     }
     for (label, raw) in image_entries {

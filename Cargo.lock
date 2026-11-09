@@ -1936,6 +1936,7 @@ name = "craft-scribbles"
 version = "0.17.0"
 dependencies = [
  "craft-atomic",
+ "flate2",
  "image",
  "serde",
  "serde_json",

@@ -7,7 +7,8 @@
 
 use crate::{EngineError, Result, Session};
 use craft_scribbles::{
-    DEFAULT_FLOW_PROJECT_URL, DEFAULT_MOPPET_MAKER_URL, DEFAULT_STORYBOARD_PACK_TOOL_URL, StoryboardPackItem, VideoClipRequest, classify_animation_style,
+    DEFAULT_FLOW_PROJECT_URL, DEFAULT_MOPPET_MAKER_URL, DEFAULT_STORYBOARD_PACK_TOOL_URL, LOCKED_MOPPETS, StoryboardPackItem, VideoClipRequest,
+    classify_animation_style,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -458,10 +459,65 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
         slots.iter().find(|sl| sl["label"].as_str() == Some(label)).and_then(|sl| sl["image"].as_str()).map(str::to_string)
     };
 
-    let core_style =
-        pages.first().and_then(|pg| pg["slots"].as_array()).map(|sl| slot_text(sl, "cover_subtitle")).filter(|t| !t.is_empty()).unwrap_or_else(|| {
-            "CORE STYLE: torn notebook paper, painted ink, cardboard, clay, foil; front 3/4 only, quiet title zone, no text in image.".into()
-        });
+    let workspace_root = std::env::current_dir().unwrap_or_else(|_| root.to_path_buf());
+    let mut cast_moppets: Vec<Value> = Vec::new();
+    let mut moppet_lookup: BTreeMap<String, (PathBuf, String)> = BTreeMap::new();
+    for (id, name, rel_img, locked_desc) in LOCKED_MOPPETS {
+        let abs_img = workspace_root.join(rel_img);
+        moppet_lookup.insert(id.to_ascii_lowercase(), (abs_img, (*locked_desc).to_string()));
+        moppet_lookup.insert(name.to_ascii_lowercase(), (workspace_root.join(rel_img), (*locked_desc).to_string()));
+    }
+
+    let (core_style, master_prompt, master_reference_register, cover_key_art_image) = if let Some(cover_pg) = pages.first() {
+        let sl = cover_pg["slots"].as_array().cloned().unwrap_or_default();
+        let sub = slot_text(&sl, "cover_subtitle");
+        let design = slot_text(&sl, "cover_overall_design");
+        let key_art = slot_image(&sl, "cover_key_art");
+        let mut reg = Vec::new();
+        for idx in 1..=6 {
+            let code = slot_text(&sl, &format!("cover_reg_id_{idx}"));
+            let name = slot_text(&sl, &format!("cover_reg_name_{idx}"));
+            let where_used = slot_text(&sl, &format!("cover_reg_where_{idx}"));
+            let thumb = slot_image(&sl, &format!("cover_reg_thumb_{idx}"));
+            if !code.is_empty() {
+                let lower_name = name.to_ascii_lowercase();
+                for (m_id, m_name, rel_img, locked_desc) in LOCKED_MOPPETS {
+                    if lower_name.contains(m_id) && !cast_moppets.iter().any(|v| v["id"].as_str() == Some(*m_id)) {
+                        cast_moppets.push(json!({
+                            "code": code,
+                            "id": m_id,
+                            "name": m_name,
+                            "locked": true,
+                            "reference_image": workspace_root.join(rel_img),
+                            "locked_design": locked_desc,
+                        }));
+                    }
+                }
+                reg.push(json!({
+                    "index": idx,
+                    "code": code,
+                    "name": name,
+                    "where": where_used,
+                    "slot": format!("cover_reg_thumb_{idx}"),
+                    "image": thumb,
+                }));
+            }
+        }
+        let core = if sub.is_empty() {
+            "CORE STYLE: torn notebook paper, painted ink, cardboard, clay, foil; front 3/4 only, quiet title zone, no text in image.".to_string()
+        } else {
+            sub
+        };
+        let master = if design.is_empty() { core.clone() } else { format!("{core} | {design}") };
+        (core, master, reg, key_art)
+    } else {
+        (
+            "CORE STYLE: torn notebook paper, painted ink, cardboard, clay, foil; front 3/4 only, quiet title zone, no text in image.".to_string(),
+            String::new(),
+            Vec::new(),
+            None,
+        )
+    };
 
     let mut items: Vec<StoryboardPackItem> = Vec::new();
     let mut scene_counter = 0usize;
@@ -500,16 +556,34 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
                     prompt,
                     animation_style: "collage_key_art".into(),
                     references: vec!["L01".into(), "L02".into(), "C01".into()],
+                    reference_image: None,
                     existing_image: slot_image(&slots, "cover_key_art"),
                 });
             }
             "world" if page_idx == 1 => {
                 let base_prompt = slot_text(&slots, "world_location_prompt");
-                for (code, slot, desc) in [
-                    ("L01", "world_stage_image", "L01 Blank Paper Wall (verse): blank ruled notebook paper wall + hand-drawn ink doodle arrows"),
-                    ("L02", "world_source_image", "L02 Cardboard Box (chorus mock): open corrugated cardboard box + empty tray, front 3/4"),
-                    ("L03", "world_result_image", "L03 Clay Room (AI plate outro): empty matte clay room + crumpled foil spotlight cone, no text"),
-                ] {
+                let l01_cap = slot_text(&slots, "world_stage_caption");
+                let l02_cap = slot_text(&slots, "world_source_image_caption");
+                let l03_cap = slot_text(&slots, "world_result_image_caption");
+                let l01_desc = if !l01_cap.is_empty() {
+                    format!("L01 {l01_cap}")
+                } else {
+                    "L01 Blank Paper Wall (verse): blank ruled notebook paper wall + hand-drawn ink doodle arrows".to_string()
+                };
+                let l02_desc = if !l02_cap.is_empty() {
+                    format!("L02 {l02_cap}")
+                } else {
+                    "L02 Cardboard Box (chorus mock): open corrugated cardboard box + empty tray, front 3/4".to_string()
+                };
+                let l03_desc = if !l03_cap.is_empty() {
+                    format!("L03 {l03_cap}")
+                } else {
+                    "L03 Clay Room (AI plate outro): empty matte clay room + crumpled foil spotlight cone, no text".to_string()
+                };
+
+                for (code, slot, desc) in
+                    [("L01", "world_stage_image", l01_desc), ("L02", "world_source_image", l02_desc), ("L03", "world_result_image", l03_desc)]
+                {
                     items.push(StoryboardPackItem {
                         id_marker: format!("{code}__{slot}"),
                         code: code.into(),
@@ -517,21 +591,51 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
                         archetype: archetype.clone(),
                         slot: slot.into(),
                         kind: "location".into(),
-                        title: desc.into(),
+                        title: desc.clone(),
                         prompt: format!("{base_prompt} | FOCUS: {desc}"),
                         animation_style: "location_plate".into(),
                         references: vec!["COVER".into()],
+                        reference_image: None,
                         existing_image: slot_image(&slots, slot),
                     });
                 }
             }
             "char" => {
                 let base_prompt = slot_text(&slots, "char_exact_prompt");
-                for (code, slot, desc) in [
-                    ("C01", "char_original_image", "C01 Creator paper cutout character with crayon shrug, front 3/4"),
-                    ("C02", "char_pose_image", "C02 Clay Mic with crumpled silver foil grille on clay stand, front 3/4"),
-                    ("C03", "char_geometry_pose", "C03 Paper Hand cutout reaching with cursor physics energy, front 3/4"),
-                ] {
+                let reg_name_for = |code: &str| -> String {
+                    master_reference_register
+                        .iter()
+                        .find(|r| r["code"].as_str() == Some(code))
+                        .map(|r| format!("{} {} ({})", code, r["name"].as_str().unwrap_or_default(), r["where"].as_str().unwrap_or_default()))
+                        .unwrap_or_else(|| code.to_string())
+                };
+                let c01_cap = slot_text(&slots, "char_original_image_caption");
+                let c02_cap = slot_text(&slots, "char_pose_image_caption");
+                let c03_cap = slot_text(&slots, "char_hand_note");
+                let c01_default =
+                    if !c01_cap.is_empty() { format!("C01 {c01_cap}") } else { "C01 Creator paper cutout character with crayon shrug, front 3/4".to_string() };
+                let c02_default = if !c02_cap.is_empty() {
+                    format!("C02 {c02_cap}")
+                } else {
+                    "C02 Clay Mic with crumpled silver foil grille on clay stand, front 3/4".to_string()
+                };
+                let c03_default = if !c03_cap.is_empty() {
+                    format!("C03 {c03_cap}")
+                } else {
+                    "C03 Paper Hand cutout reaching with cursor physics energy, front 3/4".to_string()
+                };
+
+                for (code, slot, default_desc) in
+                    [("C01", "char_original_image", c01_default), ("C02", "char_pose_image", c02_default), ("C03", "char_geometry_pose", c03_default)]
+                {
+                    let reg_label = reg_name_for(code);
+                    let matched_moppet = LOCKED_MOPPETS.iter().find(|(m_id, _, _, _)| reg_label.to_ascii_lowercase().contains(*m_id));
+                    let (desc, locked_ref) = if let Some((_, _, rel_img, locked_desc)) = matched_moppet {
+                        let p = workspace_root.join(rel_img);
+                        (format!("LOCKED MOPPET DESIGN: {locked_desc}"), p.is_file().then(|| p.to_string_lossy().to_string()))
+                    } else {
+                        (default_desc.clone(), None)
+                    };
                     items.push(StoryboardPackItem {
                         id_marker: format!("{code}__{slot}"),
                         code: code.into(),
@@ -539,10 +643,11 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
                         archetype: archetype.clone(),
                         slot: slot.into(),
                         kind: "character".into(),
-                        title: desc.into(),
+                        title: desc.clone(),
                         prompt: format!("{base_prompt} | FOCUS: {desc}"),
                         animation_style: "cutout_rig".into(),
                         references: vec!["COVER".into()],
+                        reference_image: locked_ref,
                         existing_image: slot_image(&slots, slot),
                     });
                 }
@@ -572,6 +677,7 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
                     prompt: if exact_prompt.is_empty() { format!("{core_style} | {design}") } else { exact_prompt },
                     animation_style: anim_style,
                     references: refs,
+                    reference_image: slot_image(&slots, "source_image"),
                     existing_image: slot_image(&slots, "hero_image"),
                 });
             }
@@ -579,18 +685,119 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
 
+    // Build the Master World Composite (`storyboard/composites/MASTER_WORLD__composite.png`) by flattening
+    // only canonical Location (`L01`..`L03`) and canonical Character (`C01`, `C02`) plates (plus locked
+    // canonical Moppet references when cast) — never using one-off/cardboard joke variants (`C03`) as a reference!
+    let mut code_to_img: BTreeMap<String, PathBuf> = BTreeMap::new();
+    let mut master_world_sources: Vec<PathBuf> = Vec::new();
+    for item in &items {
+        if let Some(ref img) = item.existing_image {
+            let pb = PathBuf::from(img);
+            if pb.is_file() {
+                if item.code == "C03" {
+                    // Keep C03 (e.g. cardboard Moppet gag) as a scene/character asset, never as an upstream reference
+                    continue;
+                }
+                code_to_img.insert(item.code.clone(), pb.clone());
+                if (item.code.starts_with('L') || item.code == "C01" || item.code == "C02") && !master_world_sources.contains(&pb) {
+                    master_world_sources.push(pb);
+                }
+            }
+        }
+    }
+    let comp_dir = root.join("storyboard/composites");
+    let master_world_composite = if !master_world_sources.is_empty() {
+        let out_master = comp_dir.join("MASTER_WORLD__composite.png");
+        craft_scribbles::build_composite_reference(&master_world_sources, &out_master).ok()
+    } else {
+        None
+    };
+    if let Some(ref mw) = master_world_composite {
+        code_to_img.insert("COVER".into(), mw.clone());
+        code_to_img.insert("MASTER_WORLD".into(), mw.clone());
+    }
+    for (id, _, rel_img, _) in LOCKED_MOPPETS {
+        let p = workspace_root.join(rel_img);
+        if p.is_file() {
+            code_to_img.insert(format!("{}_LOCKED", id.to_ascii_uppercase()), p);
+        }
+    }
+    let mut source_updates = Vec::new();
+    if let Some(ref mw) = master_world_composite {
+        source_updates.push(json!({
+            "page": 0,
+            "images": { "cover_key_art": mw }
+        }));
+    }
+    for item in &mut items {
+        let mut ref_files: Vec<PathBuf> = Vec::new();
+        for r in &item.references {
+            let prefix = r.split_whitespace().next().unwrap_or(r).trim().to_ascii_uppercase();
+            if let Some(pb) = code_to_img.get(&prefix)
+                && !ref_files.contains(pb)
+            {
+                ref_files.push(pb.clone());
+            }
+        }
+        if ref_files.len() == 1 {
+            item.reference_image = Some(ref_files[0].to_string_lossy().to_string());
+        } else if ref_files.len() > 1 {
+            let out_comp = comp_dir.join(format!("{}__reference.png", item.code));
+            if let Ok(built) = craft_scribbles::build_composite_reference(&ref_files, &out_comp) {
+                let built_str = built.to_string_lossy().to_string();
+                item.reference_image = Some(built_str.clone());
+                if item.archetype == "scene" {
+                    source_updates.push(json!({
+                        "page": item.page,
+                        "images": { "source_image": built_str }
+                    }));
+                }
+            }
+        } else if let Some(ref mw) = master_world_composite {
+            item.reference_image = Some(mw.to_string_lossy().to_string());
+        }
+    }
+    if !source_updates.is_empty() && p["sync_sources"].as_bool().unwrap_or(true) {
+        let _ = s.execute("storyboard.set", json!({ "pages": source_updates }));
+    }
+
     let missing_count = items.iter().filter(|i| i.existing_image.is_none()).count();
-    let pack_doc = json!({
+    let mut pack_doc = json!({
         "ok": true,
         "format": "magic.storyboard-pack.v1",
         "project": project,
         "flow_tool_url": DEFAULT_STORYBOARD_PACK_TOOL_URL,
         "moppet_maker_url": DEFAULT_MOPPET_MAKER_URL,
         "core_style": core_style,
+        "master_prompt": master_prompt,
+        "master_world_composite": master_world_composite,
+        "cover_key_art_image": master_world_composite.as_ref().map(|p| p.to_string_lossy().to_string()).or(cover_key_art_image),
+        "master_reference_register": master_reference_register,
         "total_items": items.len(),
         "missing_count": missing_count,
         "items": items,
     });
+    if !cast_moppets.is_empty() || p["include_moppets"].as_bool().unwrap_or(false) {
+        let locked_moppets: Vec<Value> = if !cast_moppets.is_empty() {
+            cast_moppets
+        } else {
+            LOCKED_MOPPETS
+                .iter()
+                .map(|(id, name, rel_img, locked_desc)| {
+                    json!({
+                        "id": id,
+                        "name": name,
+                        "locked": true,
+                        "reference_image": workspace_root.join(rel_img),
+                        "locked_design": locked_desc,
+                    })
+                })
+                .collect()
+        };
+        pack_doc["moppets_lore"] = json!("Electronic devices with AI hearts and brains that act like autonomous puppets.");
+        pack_doc["moppets_roster_image"] = json!(workspace_root.join("assets/characters/moppets/moppets-roster.jpg"));
+        pack_doc["locked_moppets"] = json!(locked_moppets);
+    }
 
     let sb_dir = root.join("storyboard");
     std::fs::create_dir_all(&sb_dir)?;
