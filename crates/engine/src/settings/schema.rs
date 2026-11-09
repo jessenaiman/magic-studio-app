@@ -77,7 +77,7 @@ pub fn fields_with_cat() -> Vec<(&'static str, Field)> {
             Field {
                 key: "image.provider",
                 label: "Image provider",
-                kind: Kind::Choice(&[("codex", "Codex (subscription)"), ("flow", "Google Flow (Ultra subscription)")]),
+                kind: Kind::Choice(&[("codex", "Codex (GPT-6 Luna)"), ("agy", "AGY (Gemini 3.8 Flash)"), ("flow", "Google Flow (Browser-Agent)")]),
                 wired: true,
                 enabled_by: None,
             },
@@ -88,7 +88,7 @@ pub fn fields_with_cat() -> Vec<(&'static str, Field)> {
             Field {
                 key: "scribbles.provider",
                 label: "Scribbles provider",
-                kind: Kind::Choice(&[("codex", "Codex (subscription)"), ("flow", "Google Flow (Ultra subscription)")]),
+                kind: Kind::Choice(&[("codex", "Codex (GPT-6 Luna)"), ("agy", "AGY (Gemini 3.8 Flash)"), ("flow", "Google Flow (Browser-Agent)")]),
                 wired: true,
                 enabled_by: None,
             },

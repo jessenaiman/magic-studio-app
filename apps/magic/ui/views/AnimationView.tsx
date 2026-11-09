@@ -487,8 +487,52 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
       className="active"
       data-ui-config="view-animation"
       aria-label="Animation workspace"
-      style={{ height: "100%", width: "100%" }}
+      style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
     >
+      {/* Top Character Roster Bar */}
+      <div
+        id="anim-roster-bar"
+        className="animation-character-bar"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "8px 14px",
+          background: "var(--surface-1, #121820)",
+          borderBottom: "1px solid var(--line, #243040)",
+          overflowX: "auto",
+          flexShrink: 0,
+        }}
+      >
+        <strong style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--muted, #8a99a8)", marginRight: "6px" }}>Character Roster:</strong>
+        {characters.map((c) => {
+          const isSelected = c.id === selectedCharId || c.name === selectedCharId;
+          return (
+            <button
+              key={c.id}
+              id={`anim-char-${c.id}`}
+              className={`ghost ${isSelected ? "active" : ""}`}
+              style={{
+                fontSize: "12px",
+                padding: "4px 10px",
+                borderRadius: "6px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                borderColor: isSelected ? "var(--accent, #4fd1c5)" : undefined,
+                background: isSelected ? "rgba(79, 209, 197, 0.15)" : undefined,
+                color: isSelected ? "var(--accent, #4fd1c5)" : undefined,
+                cursor: "pointer",
+              }}
+              onClick={() => void selectCharacter(c.id, selectedView)}
+            >
+              <span>👤</span>
+              <span style={{ fontWeight: 600 }}>{c.name || c.id}</span>
+              <span style={{ fontSize: "10px", opacity: 0.6 }}>({c.animation_style || "cutout"})</span>
+            </button>
+          );
+        })}
+      </div>
       <AnimationStage
         selectedCharId={selectedCharId}
         selectedView={selectedView}

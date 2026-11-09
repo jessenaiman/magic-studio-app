@@ -43,7 +43,7 @@ fn build_kinetic_for_design(a: &Value, recipe_doc: &Value, p: &Value, k: usize) 
     })
 }
 
-fn run_lyrics_layout(dir: &Path, recipe_doc: &Value, doc: &Value, times: &std::collections::HashMap<String, (Tick, Tick)>) -> Result<Value> {
+fn run_lyrics_layout(_dir: &Path, recipe_doc: &Value, doc: &Value, times: &std::collections::HashMap<String, (Tick, Tick)>) -> Result<Value> {
     let animations: Vec<Value> = doc["animations"]
         .as_array()
         .into_iter()
@@ -65,11 +65,6 @@ fn run_lyrics_layout(dir: &Path, recipe_doc: &Value, doc: &Value, times: &std::c
             json!({"animation_id":a["animation_id"],"section":a["scope"]["section"],"words":words})
         })
         .collect();
-    let input = dir.join("design/words-design-input.json");
-    if let Some(parent) = input.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    crate::doc_state::write_file(&input, serde_json::to_vec(&json!({"animations":animations})).map_err(|e| invalid(e.to_string()))?)?;
     Ok(crate::cmd::words::lyrics_layout::designs(recipe_doc, &animations))
 }
 
@@ -201,19 +196,12 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
         receipt["start"] = composed["song_anchor"].clone();
         receipt["drawings"] = composed["drawings"].clone();
     }
-    let applied_file = dir.join("design/words-applied.json");
-    let mut applied: Vec<String> = fs::read(&applied_file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-    if use_it {
-        if !applied.iter().any(|x| x == id) {
-            applied.push(id.to_owned());
+    if let Ok(Some(mut doc)) = crate::cmd::words::load(s, &dir) {
+        if let Some(anim) = doc["animations"].as_array_mut().and_then(|a| a.iter_mut().find(|x| x["animation_id"] == id)) {
+            anim["in_video"] = json!(use_it);
+            let _ = crate::cmd::words::save(s, &dir, &doc);
         }
-    } else {
-        applied.retain(|x| x != id);
     }
-    if let Some(parent) = applied_file.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    crate::doc_state::write_file(&applied_file, serde_json::to_vec_pretty(&applied).map_err(|e| invalid(e.to_string()))?)?;
     Ok(receipt)
 }
 
@@ -335,13 +323,9 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
         "design": anim["design"],
         "words": words
     });
-    let rel_src = format!("lettering/sections/{composition_id}.json");
+    let rel_src = "lettering/lyrics.ecproj".to_owned();
     let file = dir.join(&rel_src);
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)?;
-    }
     let bytes = serde_json::to_vec_pretty(&data).map_err(|e| invalid(e.to_string()))?;
-    crate::doc_state::write_file(&file, &bytes)?;
     let drawings: Vec<Value> = read["graphics"]
         .as_array()
         .into_iter()
@@ -355,7 +339,7 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
             let own = format!("{composition_id}-drawing-{index}");
             json!({
                 "composition_id": own,
-                "src": format!("lettering/sections/{own}.json"),
+                "src": "lettering/lyrics.ecproj",
                 "start_tick": start.0,
                 "duration_tick": dur.0,
                 "start": start.seconds(),

@@ -465,13 +465,19 @@ fn words_designs(dir: &Path, all: &[Line]) -> Value {
     let mut map = serde_json::Map::new();
     let tolerance = TICKS_PER_SECOND / 10_000;
     for line in all {
-        let design = doc["animations"].as_array().into_iter().flatten().find_map(|anim| {
-            let belongs = anim["words"].as_array().into_iter().flatten().any(|word| {
-                word["sung_id"].as_str().or(word["line_id"].as_str()) == Some(line.id.as_str())
-                    && word_tick(word, "start_tick", "start").is_some_and(|start| (start.0 - line.start.0).abs() <= tolerance)
-            });
-            belongs.then(|| anim["design"].get(&line.id)).flatten()
-        });
+        let design = doc["animations"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find_map(|anim| {
+                let belongs = anim["words"].as_array().into_iter().flatten().any(|word| {
+                    let wid_line = word["word_id"].as_str().and_then(|wid| wid.split_once('/').map(|(l, _)| l));
+                    (word["sung_id"].as_str().or(word["line_id"].as_str()).or(wid_line) == Some(line.id.as_str()))
+                        && word_tick(word, "start_tick", "start").is_some_and(|start| (start.0 - line.start.0).abs() <= tolerance)
+                });
+                belongs.then(|| anim["design"].get(&line.id)).flatten()
+            })
+            .or_else(|| doc["animations"].as_array().into_iter().flatten().find_map(|anim| anim["design"].get(&line.id)));
         if let Some(design) = design {
             map.insert(line.layer.clone(), design.clone());
         }

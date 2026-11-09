@@ -483,7 +483,6 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="app-view-host">
-        {projectPath && <PreservedWorkspaces key={projectPath} project={projectPath} view={view} onToast={showToast} />}
         {view === "gallery" ? (
           <GalleryView />
         ) : view === "mayhem" ? (
@@ -502,8 +501,14 @@ export const App: React.FC = () => {
             onRefresh={() => refreshProject()}
             onToast={showToast}
           />
-        
-        ) : view === "design" || view === "motion" ? null : view === "project" ? (
+        ) : view === "design" || view === "motion" ? (
+          <PreservedWorkspaces
+            key={projectPath}
+            project={projectPath}
+            view={view}
+            onToast={showToast}
+          />
+        ) : view === "project" ? (
           <ProjectView
             projectPath={projectPath}
             data={data}

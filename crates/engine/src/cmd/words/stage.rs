@@ -9,7 +9,7 @@ use crate::{Result, Session};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn is_image_file(p: &Path) -> bool {
     p.is_file() && p.extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp"))
@@ -137,15 +137,7 @@ fn runtime_effectcraft_tools() -> Value {
 }
 
 fn runtime_filmcraft_tools() -> Value {
-    let cli = crate::workspace::find_executable("filmcraft-cli").ok();
-    let run = |id: &str| -> Value {
-        cli.as_ref()
-            .and_then(|c| {
-                let out = std::process::Command::new(c).arg("exec").arg(id).arg("{}").output().ok()?;
-                if out.status.success() { serde_json::from_slice(&out.stdout).ok() } else { None }
-            })
-            .unwrap_or(Value::Null)
-    };
+    let run = |id: &str| -> Value { crate::CraftHub::execute(crate::CraftTarget::Film, None, id, &json!({})).unwrap_or(Value::Null) };
     let effects: Vec<Value> = run("effects.list")
         .as_array()
         .cloned()
@@ -154,9 +146,11 @@ fn runtime_filmcraft_tools() -> Value {
         .map(|fx| json!({"id": fx["id"], "name": fx["name"], "category": fx.get("folder").or_else(|| fx.get("category")).unwrap_or(&Value::Null), "kind": fx["kind"]}))
         .collect();
     let presets = run("presets.list");
+    let export_presets = run("export.presets.list");
     json!({
         "effects": effects,
-        "presets": if presets.is_array() { presets } else { json!([]) }
+        "presets": if presets.is_array() { presets } else { json!([]) },
+        "export_presets": if export_presets.is_array() { export_presets } else { json!([]) }
     })
 }
 
@@ -417,6 +411,41 @@ fn apply_display_text_for_read(doc: &mut Value) {
     }
 }
 
+fn project_scene_clips(dir: &Path, doc: &Value) -> Vec<Value> {
+    let motion_dir = dir.join("motion");
+    let Ok(entries) = fs::read_dir(&motion_dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("mp4")) && p.file_stem().is_some_and(|st| st.to_string_lossy().starts_with("Scene "))
+        })
+        .collect();
+    files.sort();
+    let animations = doc["animations"].as_array().cloned().unwrap_or_default();
+    let n_sec = animations.len().max(1);
+    files
+        .into_iter()
+        .enumerate()
+        .map(|(idx, path)| {
+            let stem = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+            let id = stem.strip_prefix("Scene ").unwrap_or(&stem).to_string();
+            let sec_idx = idx.min(n_sec - 1);
+            let anim = animations.get(sec_idx);
+            let sec_name = anim.and_then(|a| a["scope"]["section"].as_str()).unwrap_or("Scene");
+            let start = anim.and_then(|a| a["song_anchor"].as_f64()).unwrap_or(0.0);
+            json!({
+                "id": id,
+                "label": format!("{id} · {sec_name}"),
+                "sectionIndex": sec_idx,
+                "start": start,
+                "path": path
+            })
+        })
+        .collect()
+}
+
 pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::cmd::words::workspace_dir(s)?;
     let (mut doc, saved) = load_or_default_doc(s, &dir)?;
@@ -431,13 +460,21 @@ pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
         doc["animations"] = json!([anim]);
     }
     apply_display_text_for_read(&mut doc);
-    let in_video: Vec<String> = fs::read(dir.join("design/words-applied.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    let in_video: Vec<String> = doc["animations"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|a| a["in_video"].as_bool() != Some(false))
+        .filter_map(|a| a["animation_id"].as_str().map(str::to_owned))
+        .collect();
     let kinetic_library: Value = serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
     let tools = runtime_words_tools(&kinetic_library);
     let graphics = graphic_cues(&doc, &kinetic_library, &studio_times(s));
     let images = project_backdrop_images(s, &dir);
+    let scene_clips = project_scene_clips(&dir, &doc);
     Ok(json!({
         "images": images,
+        "scene_clips": scene_clips,
         "graphics": graphics,
         "ok": true,
         "saved": saved,

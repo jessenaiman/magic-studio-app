@@ -3,7 +3,6 @@
 //! timeline in FilmCraft for hand edits. All time is measured in [`Tick`] (`254_016_000_000` ticks/s).
 
 pub mod assembly;
-mod export_validation;
 
 use std::path::{Path, PathBuf};
 
@@ -68,79 +67,10 @@ pub(crate) fn timeline_file(s: &Session) -> Result<Value> {
     Ok(file_info(&film(s)?.project))
 }
 
-/// Runs `steps` in the open FilmCraft window, or `None` if it does not have `project` open.
-fn run_in_window(project: &Path, save: bool, steps: &[Value]) -> Option<Result<Vec<Value>>> {
-    let mut results = Vec::with_capacity(steps.len());
-    for (index, step) in steps.iter().enumerate() {
-        let id = step["id"].as_str().or_else(|| step["command"].as_str())?;
-        let params = step.get("params").cloned().unwrap_or_else(|| json!({}));
-        let last = index + 1 == steps.len();
-        match crate::CraftHub::in_process(crate::CraftTarget::Film, Some(project), id, &params, save && last) {
-            Some(Ok(value)) => results.push(value),
-            Some(Err(error)) => return Some(Err(error)),
-            None if index == 0 => return None,
-            None => return Some(Err(EngineError::ExternalTool("filmcraft".into(), format!("FilmCraft closed during {id}")))),
-        }
-    }
-    Some(Ok(results))
-}
-
 /// Run a JSONL batch of commands on `project` (or a fresh session when `fresh` is true or
 /// `project` does not exist yet), optionally saving back to `project`.
 pub(crate) fn run_steps(project: Option<&Path>, fresh: bool, save: bool, steps: &[Value]) -> Result<Vec<Value>> {
-    if !fresh
-        && let Some(project) = project
-        && let Some(results) = run_in_window(project, save, steps)
-    {
-        return results;
-    }
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
-    let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    let mut cmd = Command::new(&cli);
-    if let Some(p) = project {
-        if !fresh && p.is_file() {
-            cmd.arg("--project").arg(p);
-            if save {
-                cmd.arg("--save");
-            }
-        } else if save {
-            if let Some(parent) = p.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            cmd.arg("--save-as").arg(p);
-        }
-    }
-    cmd.arg("run").arg("-").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        for step in steps {
-            let id = step["id"].as_str().or_else(|| step["command"].as_str()).ok_or_else(|| bad(format!("missing command id in {step}")))?;
-            let params = step.get("params").cloned().unwrap_or_else(|| json!({}));
-            let line =
-                serde_json::to_string(&json!({"id": id, "params": params})).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-            stdin.write_all(line.as_bytes()).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-            stdin.write_all(b"\n").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-        }
-    }
-    let out = child.wait_with_output().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    if !out.status.success() {
-        return Err(EngineError::ExternalTool(
-            "filmcraft-cli".into(),
-            format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr).trim()),
-        ));
-    }
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let mut results = Vec::with_capacity(steps.len());
-    for line in stdout.lines().map(str::trim).filter(|l| !l.is_empty()) {
-        let entry: Value = serde_json::from_str(line).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-        if entry["ok"].as_bool() == Some(false) {
-            return Err(EngineError::ExternalTool("filmcraft-cli".into(), format!("{}: {}", entry["id"].as_str().unwrap_or("step"), entry["error"])));
-        }
-        results.push(entry.get("result").cloned().unwrap_or(entry));
-    }
-    Ok(results)
+    crate::CraftHub::run_film_steps(project, fresh, save, steps)
 }
 
 /// Refresh the dedicated lettering layer while leaving the picture and audio cuts in place.
@@ -272,19 +202,7 @@ fn publish_lyrics_sequence(
 }
 
 pub(crate) fn execute(project: &Path, id: &str, params: Value) -> Result<Value> {
-    let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    let out = std::process::Command::new(&cli)
-        .arg("--project")
-        .arg(project)
-        .arg("exec")
-        .arg(id)
-        .arg(params.to_string())
-        .output()
-        .map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    if !out.status.success() {
-        return Err(EngineError::ExternalTool("filmcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
-    }
-    serde_json::from_slice(&out.stdout).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))
+    crate::CraftHub::execute(crate::CraftTarget::Film, Some(project), id, &params)
 }
 
 pub(crate) fn run(project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<Value>> {
@@ -304,8 +222,13 @@ fn export_params(output: &Path, draft: bool, options: &Value) -> Value {
     if let (Some(dst), Some(src)) = (params.as_object_mut(), options.as_object()) {
         for key in [
             "preset",
+            "settings",
             "format",
             "audioCodec",
+            "flacLevel",
+            "width",
+            "height",
+            "fps",
             "scale",
             "quality",
             "audio",
@@ -316,11 +239,19 @@ fn export_params(output: &Path, draft: bool, options: &Value) -> Value {
             "startSeconds",
             "endSeconds",
             "hardwareEncoding",
+            "gpuRendering",
             "proresProfile",
             "dnxProfile",
+            "apvProfile",
+            "h264Profile",
+            "h264IntraOnly",
+            "mxfVideoCodec",
             "bitrateKbps",
+            "bitrateMode",
             "crf",
             "alpha",
+            "exrCompression",
+            "sequence",
         ] {
             if let Some(val) = src.get(key).filter(|v| !v.is_null() || matches!(key, "captionSidecar" | "preset")) {
                 dst.insert(key.into(), if key == "captionSidecar" && val.is_null() { json!("none") } else { val.clone() });
@@ -332,42 +263,24 @@ fn export_params(output: &Path, draft: bool, options: &Value) -> Value {
 
 pub(crate) fn export_with_options(project: &Path, output: &Path, draft: bool, options: &Value) -> Result<()> {
     let params = export_params(output, draft, options);
-    let result = execute(project, "file.exportMedia", params)?;
-    if let Some(offline) = result["offlineMedia"].as_array().filter(|items| !items.is_empty()) {
-        return Err(EngineError::ExternalTool("filmcraft-cli".into(), format!("export blocked by offline media: {offline:?}")));
+    let queue = options.get("queue").and_then(Value::as_bool) == Some(true);
+    let cmd_id = if queue { "export.queue.add" } else { "file.exportMedia" };
+    let result = crate::CraftHub::execute(crate::CraftTarget::Film, Some(project), cmd_id, &params)?;
+    if !draft
+        && options.get("allowOffline").and_then(Value::as_bool) != Some(true)
+        && let Some(offline) = result["offlineMedia"].as_array().filter(|items| !items.is_empty())
+    {
+        return Err(EngineError::ExternalTool("filmcraft".into(), format!("export blocked by offline media: {offline:?}")));
     }
     Ok(())
 }
 
 pub(crate) fn frame_at_tick(project: &Path, tick: Tick, output: &Path) -> Result<()> {
-    let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    if let Some(parent) = output.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let out = std::process::Command::new(&cli)
-        .arg("--project")
-        .arg(project)
-        .arg("render")
-        .arg("--seconds")
-        .arg(tick.seconds().to_string())
-        .arg("--out")
-        .arg(output)
-        .output()
-        .map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    if !out.status.success() {
-        return Err(EngineError::ExternalTool("filmcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
-    }
-    Ok(())
+    crate::CraftHub::render_film_frame(project, tick, 1.0, output)
 }
 
 pub(crate) fn probe_media(filename: &Path) -> Result<Value> {
-    let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    let out =
-        std::process::Command::new(&cli).arg("probe").arg(filename).output().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    if !out.status.success() {
-        return Err(EngineError::InvalidParams(format!("cannot inspect {}: {}", filename.display(), String::from_utf8_lossy(&out.stderr).trim())));
-    }
-    serde_json::from_slice(&out.stdout).map_err(|e| EngineError::InvalidParams(format!("cannot inspect {}: {e}", filename.display())))
+    crate::CraftHub::probe_film_media(filename)
 }
 
 pub(crate) fn media_duration_ticks(filename: &Path, require_video: bool) -> Result<Tick> {
@@ -400,21 +313,84 @@ fn export_with(f: &Film, out: &Path, draft: bool, options: &Value) -> Result<()>
     Ok(())
 }
 
+fn export_destination(f: &Film, p: &Value) -> (PathBuf, Value) {
+    let mut options = p.clone();
+    let format = p["format"]
+        .as_str()
+        .or_else(|| p["settings"]["format"].as_str())
+        .map(str::to_ascii_lowercase)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "h264".into());
+    let ext = match format.as_str() {
+        "prores" | "dnxhr" | "apv" | "mjpeg" => "mov",
+        "mxf-op1a" | "mxf-opatom" => "mxf",
+        "png" => "png",
+        "tiff" => "tiff",
+        "bmp" => "bmp",
+        "gif" => "gif",
+        "wav" => "wav",
+        "aiff" => "aiff",
+        "flac" => "flac",
+        "aac" => "aac",
+        "mp3" => "mp3",
+        "webm" => "webm",
+        _ => "mp4",
+    };
+    let out = p["path"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(|raw| {
+            let path = PathBuf::from(raw);
+            if path.is_absolute() { path } else { f.dir.join(path) }
+        })
+        .unwrap_or_else(|| if ext == "mp4" { f.export() } else { f.dir.join("exports").join(format!("{}.{ext}", f.name)) });
+    if let Some(obj) = options.as_object_mut() {
+        obj.remove("path");
+    }
+    (out, options)
+}
+
+fn inspect_export_status(f: &Film, out: &Path) -> Value {
+    if !out.is_file() {
+        return json!({"valid": false, "reason": "No exported media file at destination yet"});
+    }
+    let Ok(meta) = std::fs::metadata(out) else {
+        return json!({"valid": false, "reason": "Cannot read exported file metadata"});
+    };
+    if meta.len() == 0 {
+        return json!({"valid": false, "reason": "Exported file is empty (0 bytes)"});
+    }
+    if let (Ok(out_time), Ok(proj_time)) = (meta.modified(), std::fs::metadata(&f.project).and_then(|m| m.modified()))
+        && out_time < proj_time
+    {
+        return json!({"valid": false, "reason": "Timeline changed after this export was rendered"});
+    }
+    match probe_media(out) {
+        Ok(probe) => json!({
+            "valid": true,
+            "path": out,
+            "bytes": meta.len(),
+            "probe": probe,
+        }),
+        Err(_) => json!({
+            "valid": true,
+            "path": out,
+            "bytes": meta.len(),
+        }),
+    }
+}
+
 /// What exists for the film and whether the preview and export are older than the timeline.
 pub fn cmd_video_film(s: &mut Session, p: &Value) -> Result<Value> {
     let f = film(s)?;
     let project = file_info(&f.project);
     let preview = file_info(&f.preview());
-    let (out, options) = export_validation::destination(&f, p);
+    let (out, options) = export_destination(&f, p);
     let export = file_info(&out);
-    let mut validation = export_validation::status(&f, &out, &options, false);
+    let validation = inspect_export_status(&f, &out);
     let stale = |v: &Value| v["exists"] == true && v["modified"].as_u64() < project["modified"].as_u64();
     let storyboard = file_info(&f.dir.join("storyboard.designcraft"));
     let storyboard_stale = project["exists"] == true && storyboard["exists"] == true && storyboard["modified"].as_u64() > project["modified"].as_u64();
-    if storyboard_stale {
-        validation["valid"] = json!(false);
-        validation["reason"] = json!("The storyboard changed after this timeline was built; update the film from the storyboard first");
-    }
     Ok(json!({"ok": true, "timeline": project, "preview": preview, "export": export, "storyboard": storyboard, "storyboard_stale": storyboard_stale,
         "preview_stale": stale(&preview), "export_stale": !validation["valid"].as_bool().unwrap_or(false),
         "export_ready": validation["valid"] == true, "validation": validation, "export_options": options}))
@@ -431,20 +407,9 @@ pub fn cmd_video_preview(s: &mut Session, p: &Value) -> Result<Value> {
 /// The final film: full size, `exports/<song>.mp4` (or custom format/preset/options).
 pub fn cmd_video_export(s: &mut Session, p: &Value) -> Result<Value> {
     let f = film(s)?;
-    let (out, options) = export_validation::destination(&f, p);
-    export_validation::require_clean_live(&f.project)?;
-    let before = export_validation::context(&f, &out, &options)?;
+    let (out, options) = export_destination(&f, p);
     export_with(&f, &out, false, &options)?;
-    export_validation::require_clean_live(&f.project)?;
-    let validation = export_validation::record(&f, &out, &options, &before)?;
-    Ok(json!({"ok":true,"export":out,"timeline":f.project,"export_ready":true,"validation":validation,"export_options":options}))
-}
-
-/// Recheck a recorded export without rendering or changing its receipt.
-pub fn cmd_video_validate_export(s: &mut Session, p: &Value) -> Result<Value> {
-    let f = film(s)?;
-    let (out, options) = export_validation::destination(&f, p);
-    let validation = export_validation::status(&f, &out, &options, true);
+    let validation = inspect_export_status(&f, &out);
     Ok(json!({"ok":true,"export":out,"timeline":f.project,"export_ready":validation["valid"] == true,"validation":validation,"export_options":options}))
 }
 
@@ -532,8 +497,16 @@ fn track_rows(tracks: &Value, kind: &str, media: &Value) -> Vec<Value> {
                 })
                 .collect();
             let label = format!("{prefix}{}", i + 1);
-            json!({"id": t["id"], "label": label, "name": t.get("name").and_then(Value::as_str).unwrap_or(&label), "kind": kind,
-                "role": crate::cmd::film::assembly::track_role(&label), "enabled": t["enabled"], "clips": clips})
+            let name = t.get("name").and_then(Value::as_str).unwrap_or(&label);
+            let role = if name.eq_ignore_ascii_case("Kinetic Lyrics") {
+                Some("lyrics")
+            } else if name.to_ascii_lowercase().contains("character") || name.to_ascii_lowercase().contains("animation") {
+                Some("character")
+            } else {
+                crate::cmd::film::assembly::track_role(&label)
+            };
+            json!({"id": t["id"], "label": label, "name": name, "kind": kind,
+                "role": role, "enabled": t["enabled"], "clips": clips})
         })
         .collect()
 }

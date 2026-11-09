@@ -144,6 +144,66 @@
       "layout": "The attached character separated into cut-out animation parts, in a grid of 3 columns x 3 rows of equal cells (512 x 512 px each), left to right then top to bottom: head; torso with no limbs; near upper arm; near forearm with hand; far upper arm; far forearm with hand; near leg with foot; far leg with foot; empty cell. Each part is drawn whole, including everything a neighbouring part would hide in the original image: invent the hidden surface so nothing is missing underneath. Every part continues past each joint and ends in a full round cap in its own material, about 90 px across, so that overlapping neighbours can rotate without showing a gap. Limbs hang straight down with the upper joint cap centred at x=256, y=90 of the cell. The head's neck cap is centred at x=256, y=440. The torso keeps the original proportions. Same scale in every cell, nothing touches a cell edge.",
       "rules": []
     },
+    "parts_chroma": {
+      "label": "Chroma-green parts sheet (#00FF00)",
+      "reference": "https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation",
+      "canvas": [
+        1024,
+        1024
+      ],
+      "needs_reference": true,
+      "save_command": "project.add_asset",
+      "save_kind": "parts_sheet",
+      "tags": [
+        "character",
+        "moppet",
+        "parts-sheet",
+        "chroma-green"
+      ],
+      "layout": "Exploded 2D puppet disassembly parts sheet of the attached character on a perfectly flat solid chroma-green (#00FF00) background, arranged in 6 non-overlapping regions with generous 40 px green margins between every piece: top-centre = head (complete with neck joint cap); middle-centre = torso body (with no arms or legs attached); middle-left = left arm with hand (ending in a rounded shoulder joint cap); middle-right = right arm with hand (ending in a rounded shoulder joint cap); bottom-left = left leg with foot (ending in a rounded hip joint cap); bottom-right = right leg with foot (ending in a rounded hip joint cap). Every part is drawn whole with rounded overlap caps at each joint so limbs rotate cleanly without gaps.",
+      "shared_override": "Match the attached reference's art style, design, materials, palette and proportions exactly. Use ONE perfectly flat solid pure chroma-green (#00FF00) background with no gradient, vignette, shadow or floor line anywhere, and no #00FF00 green inside the character parts. No text, labels, callout lines, frames or props. Nothing touches another part or the canvas edge.",
+      "rules": []
+    },
+    "poses_2x2": {
+      "label": "2x2 Moppet pose sheet (4 poses)",
+      "reference": "https://schoolofmotion.com/blog/walk-cycle-after-effects",
+      "canvas": [
+        1024,
+        1024
+      ],
+      "needs_reference": true,
+      "save_command": "project.add_asset",
+      "save_kind": "poses",
+      "tags": [
+        "character",
+        "moppet",
+        "pose-sheet",
+        "2x2"
+      ],
+      "layout": "Four full-body poses of the attached character in a 2 columns x 2 rows grid of equal cells (512 x 512 px each), read left to right then top to bottom: (1) top-left = idle rest stance facing front 3/4; (2) top-right = talk_sing with mouth open singing and expressive hands; (3) bottom-left = walk_hop mid-stride joyful bounce; (4) bottom-right = expressive celebration wave with both arms raised. Each figure about 430 px tall, feet planted on the cell baseline at 475 px from the cell top, identical scale and proportions in all 4 quadrants, with clear margin around each quadrant.",
+      "rules": []
+    },
+    "moppet": {
+      "label": "Moppet Maker pack (character + chroma parts + 2x2 poses)",
+      "reference": "https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation",
+      "canvas": [
+        1024,
+        1024
+      ],
+      "needs_reference": false,
+      "save_command": "scribbles.ingest",
+      "save_kind": "moppet_pack",
+      "tags": [
+        "character",
+        "moppet",
+        "pack",
+        "rig-ready"
+      ],
+      "layout": "Three-part Workshop Moppet character bundle (1: full-body front 3/4 character cutout; 2: exploded #00FF00 chroma-green parts sheet; 3: 2x2 four-pose sheet) drawn sequentially with reference chaining and automatically ingested into views/front/drawing.png, views/front/parts_sheet.png, poses/, and character.svg.",
+      "rules": [
+        "stance"
+      ]
+    },
     "storyboard_hero": {
       "label": "Storyboard hero frame",
       "reference": "https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation",

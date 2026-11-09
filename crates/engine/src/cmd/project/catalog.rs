@@ -170,7 +170,7 @@ fn inspect_project_characters(project_path: &Path) -> Vec<Value> {
     }
     let project_name = project_path.file_stem().and_then(|v| v.to_str()).unwrap_or("Untitled").to_string();
     let project_str = project_path.to_string_lossy().into_owned();
-    let skip_names = ["approved-crops", "lineup", "expressions", "contact-parts-v1"];
+    let skip_names = ["approved-crops", "lineup", "expressions", "contact-parts-v1", "cast"];
     let mut out = Vec::new();
     for char_dir in sorted_dir_entries(&chars_root) {
         if !char_dir.is_dir() {

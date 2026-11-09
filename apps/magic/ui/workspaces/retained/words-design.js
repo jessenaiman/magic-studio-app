@@ -220,9 +220,11 @@ class WordsDesignController {
   }
   lines(anim) {
     const lines = [];
-    for (const w of anim.words) {
-      if (lines.at(-1)?.id !== w.line_id)
-        lines.push({ id: w.line_id, words: [] });
+    for (const w of anim.words || []) {
+      const lineId = w.line_id || (typeof w.word_id === "string" && w.word_id.includes("/") ? w.word_id.split("/")[0] : "l1");
+      if (!w.line_id) w.line_id = lineId;
+      if (!lines.length || lines.at(-1).id !== lineId)
+        lines.push({ id: lineId, words: [] });
       lines.at(-1).words.push(w);
     }
     return lines;
@@ -694,7 +696,7 @@ class WordsTimelineController {
     world.style.setProperty("--family", JSON.stringify(wordsSongFont(anim)));
     const local = wordsPanel.playing || !interactive ? t - span.start : Math.max(0.55, span.end - span.start - 0.08);
     const visibility = typeof authoringVisibility === "function" ? authoringVisibility(wordsPanel.presentationMode, wordsPanel.previewTogether) : {words:true,drawings:true};
-    const flow = interactive && typeof authoringVisibility !== "function" ? this.flowArrowsSvg(design, words, W, H) : null;
+    const flow = interactive && visibility.words ? this.flowArrowsSvg(design, words, W, H) : null;
     const strokes = (visibility.drawings ? design.draws : []).map((d, drawingIndex) => {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("class", `lyric-draw${interactive && drawingIndex === wordsPanel.selectedDrawingIndex ? " selected-drawing" : ""}`);
@@ -797,6 +799,37 @@ class WordsTimelineController {
     const world = el("div", { class: "lyric-world" });
     const bg = wordsPanel.scene ? this.activeBackdrop(anim) : null;
     const bgImg = bg ? el("img", { class: "lyric-scene-bg", src: convertFileSrc(bg.path), alt: bg.name }) : null;
+    const clipPath = wordsPanel.scene ? wordsPanel.activeEffectClipPath : null;
+    let stageVideo = null;
+    if (clipPath) {
+      stageVideo = wordsPanel.motionVideo ||= el("video", {
+        class: "motion-stage-video",
+        preload: "auto",
+        muted: true,
+        playsInline: true,
+        loop: true,
+      });
+      if (bg?.path) {
+        stageVideo.setAttribute("poster", convertFileSrc(bg.path));
+      }
+      if (stageVideo.dataset.clipPath !== clipPath) {
+        stageVideo.dataset.clipPath = clipPath;
+        const blobCache = (wordsPanel.clipBlobCache ||= new Map());
+        if (blobCache.has(clipPath)) {
+          stageVideo.src = blobCache.get(clipPath);
+        } else {
+          void fetch(convertFileSrc(clipPath)).then(r => r.ok ? r.blob() : null).then(blob => {
+            if (!blob) return;
+            const url = URL.createObjectURL(blob);
+            blobCache.set(clipPath, url);
+            if (stageVideo.dataset.clipPath === clipPath) {
+              stageVideo.src = url;
+              stageVideo.onloadeddata = () => this.canvasDraw(wordsPanel.time);
+            }
+          }).catch(() => {});
+        }
+      }
+    }
     const stageModes = el("div", { class: "lyric-stage-modes" }, el("button", {
       class: `lyric-mode-pill${!wordsPanel.drawMode ? " active" : ""}`,
       title: "Drag, scale & tilt word tokens directly on the 16:9 stage",
@@ -832,9 +865,9 @@ class WordsTimelineController {
       }
     }, "⤴ Warp Path"));
     const hint = el("div", { class: "lyric-stage-hint" }, wordsPanel.drawMode ? "Draw Mode Active: Click & drag on stage to sketch freehand SVG motion overlays" : "Drag any word to adjust spatial trajectory · Click token below to choreograph");
-    const box = el("div", { class: `lyric-canvas${bgImg ? " has-scene-bg" : ""}${wordsPanel.drawMode ? " draw-mode" : ""}`, "aria-label": "Line designer" }, bgImg, world, stageModes, hint);
+    const box = el("div", { class: `lyric-canvas${bgImg || stageVideo ? " has-scene-bg" : ""}${wordsPanel.drawMode ? " draw-mode" : ""}`, "aria-label": "Line designer" }, bgImg, stageVideo, world, stageModes, hint);
     this.bindStageDraw(box, world, anim);
-    wordsPanel.canvas = { box, world, bgImg };
+    wordsPanel.canvas = { box, world, bgImg, stageVideo };
     wordsFitter.observe(box);
     return box;
   }
@@ -890,6 +923,19 @@ class WordsTimelineController {
       const bg = this.activeBackdrop(anim);
       if (bg && canvas.bgImg.getAttribute("src") !== convertFileSrc(bg.path))
         canvas.bgImg.setAttribute("src", convertFileSrc(bg.path));
+    }
+    if (canvas.stageVideo && wordsPanel.scene) {
+      const video = canvas.stageVideo;
+      if (video.readyState && Number.isFinite(video.duration) && video.duration > 0) {
+        const offset = Number(wordsPanel.activeEffectClipStart || 0);
+        const clipTime = Math.max(0, (t - offset) % video.duration);
+        if (Math.abs(video.currentTime - clipTime) > (wordsPanel.playing ? 0.25 : 0.03))
+          video.currentTime = clipTime;
+        if (!wordsPanel.playing)
+          video.pause();
+        else if (video.paused)
+          video.play().catch(() => {});
+      }
     }
     if (wordsPanel.motionWorkspace) {
       const video = wordsPanel.motionVideo;

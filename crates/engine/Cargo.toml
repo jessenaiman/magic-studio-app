@@ -35,6 +35,14 @@ craft-media = { workspace = true }
 craft-scribbles = { workspace = true }
 craft-settings = { workspace = true }
 craft-update = { workspace = true }
+effectcraft-engine = { workspace = true }
+filmcraft-codecs = { workspace = true }
+filmcraft-engine = { workspace = true }
+filmcraft-export = { workspace = true }
+filmcraft-gpu = { workspace = true }
+filmcraft-media = { workspace = true }
+filmcraft-project = { workspace = true }
+filmcraft-render = { workspace = true }
 filmcraft-time = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]

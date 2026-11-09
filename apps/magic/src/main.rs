@@ -23,7 +23,6 @@ use std::sync::{
 };
 use std::time::Duration;
 use tauri::{Emitter, Manager};
-use tauri_plugin_opener::OpenerExt;
 
 #[derive(Parser, Debug)]
 #[command(name = "magic")]
@@ -184,15 +183,7 @@ fn run_engine_command(app: &tauri::AppHandle, id: &str, params: Value, notify: b
     {
         return Err("The active project changed; the previous workspace command was not run".into());
     }
-    let result = if id == "video.open_export" {
-        let report = session.execute("video.validate_export", params).map_err(|e| e.to_string())?;
-        if report["export_ready"] != true || report["validation"]["valid"] != true {
-            return Err(report["validation"]["error"].as_str().unwrap_or("Render a current, validated export before opening it").to_owned());
-        }
-        let path = report["export"].as_str().ok_or("Validated export returned no path")?;
-        app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())?;
-        json!({"ok":true,"opened":path})
-    } else if id == "clipboard.import_image" {
+    let result = if id == "clipboard.import_image" {
         clipboard_image::import_image(app, &mut session, &params)?
     } else {
         session.execute(id, params).map_err(|e| e.to_string())?

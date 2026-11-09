@@ -9,7 +9,8 @@ Design principles:
 2. **Everything is a command.** 162 `CommandSpec`s in `crates/engine/src/commands.rs`.
 3. **Rust server, TS client (proposed).** Rust owns documents/Craft/paid backends; TS-React (or egui) only renders + emits IDs. No JS.
 4. **No second dispatch.** CLI/MCP/--control/API resolve same registry.
-5. **Honest time:** currently `f64` seconds in lyrics/motion, not FilmCraft `Tick`. Drift risk at 29.97 — unproven.
+5. **Exact `Tick` timebase (`filmcraft-time::Tick`):** All timeline, lyric, motion, and frame commands operate on `Tick` (`254_016_000_000` ticks/second), eliminating floating-point frame drift across 24, 25, 29.97, 30, and 60 fps sequences.
+6. **Direct Craft Rust Crates in `magic-engine`:** `magic-engine` links `filmcraft-engine`, `filmcraft-export`, `filmcraft-gpu`, `filmcraft-render`, `filmcraft-project`, `filmcraft-codecs`, `filmcraft-media`, `filmcraft-time`, and `effectcraft-engine` directly in-process via `CraftHub` (routing to a live `--control` window when open, or executing in-process in Rust with zero CLI subprocess overhead).
 
 ## 1. Layers (`xtask/src/policy.rs`, enforced by `cargo xtask layers`)
 

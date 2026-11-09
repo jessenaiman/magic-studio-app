@@ -375,77 +375,34 @@ pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], s
 
 pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_side: u32, output: &Path) -> Result<()> {
     ensure_ecproj_footage_paths(project);
-    // Via installed effectcraft-cli render-frame (system app pattern)
-    let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let out = std::process::Command::new(&cli)
-        .arg("--project")
-        .arg(project)
-        .arg("render-frame")
-        .arg("--comp")
-        .arg(comp)
-        .arg("--time")
-        .arg(seconds.max(0.0).to_string())
-        .arg("--max-side")
-        .arg(max_side.to_string())
-        .arg("--transparent")
-        .arg("--out")
-        .arg(output)
-        .output()
-        .map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    if !out.status.success() {
-        return Err(EngineError::ExternalTool("effectcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
-    }
+    let scale = (max_side as f64 / 1920.0).clamp(0.1, 1.0);
+    let steps = [
+        json!({"id": "comp.open", "params": {"comp": comp}}),
+        json!({"id": "comp.saveFrameAs", "params": {"path": output, "time": seconds.max(0.0), "scale": scale, "transparent": true}}),
+    ];
+    let dir = project.parent().unwrap_or_else(|| Path::new("."));
+    let _ = effectcraft(dir, Some(project), &steps, false)?;
     Ok(())
 }
 
 pub(crate) fn effectcraft_render(project: &Path, params: Value) -> Result<Value> {
     ensure_ecproj_footage_paths(project);
-    let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     let output_str = params["output"].as_str().ok_or_else(|| bad("output path is required for effectcraft_render"))?;
     let output_path = Path::new(output_str);
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let mut cmd = std::process::Command::new(&cli);
-    cmd.arg("--json").arg("--project").arg(project).arg("render");
-    if let Some(comp) = params["comp"].as_str().filter(|s| !s.is_empty()) {
-        cmd.arg("--comp").arg(comp);
-    } else if let Some(comp_id) = params["comp"].as_u64() {
-        cmd.arg("--comp").arg(comp_id.to_string());
+    let mut queue_params = params.clone();
+    if let Some(obj) = queue_params.as_object_mut() {
+        obj.insert("output".into(), json!(output_path));
     }
-    cmd.arg("--out").arg(output_path);
-    if let Some(fmt) = params["format"].as_str() {
-        cmd.arg("--format").arg(fmt);
-    }
-    if let Some(start) = params["start"].as_f64() {
-        cmd.arg("--start").arg(start.to_string());
-    }
-    if let Some(end) = params["end"].as_f64() {
-        cmd.arg("--end").arg(end.to_string());
-    }
-    if let Some(fps) = params["frameRate"].as_f64().or_else(|| params["fps"].as_f64()) {
-        cmd.arg("--fps").arg(fps.to_string());
-    }
-    if let Some(res) = params["resolution"].as_str() {
-        cmd.arg("--resolution").arg(res);
-    }
-    if let Some(channels) = params["channels"].as_str() {
-        cmd.arg("--channels").arg(channels);
-    }
-    if let Some(prores) = params["proresProfile"].as_str() {
-        cmd.arg("--prores").arg(prores);
-    }
-    let out = cmd.output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    if !out.status.success() {
-        return Err(EngineError::ExternalTool(
-            "effectcraft-cli".into(),
-            format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr).trim()),
-        ));
-    }
-    serde_json::from_slice(&out.stdout).or_else(|_| Ok(json!({"ok": true, "output": output_path})))
+    let steps = [json!({"id": "render.queue", "params": queue_params}), json!({"id": "render.start", "params": {}})];
+    let dir = project.parent().unwrap_or_else(|| Path::new("."));
+    let results = effectcraft(dir, Some(project), &steps, false)?;
+    Ok(results.into_iter().last().unwrap_or_else(|| json!({"ok": true, "output": output_path})))
 }
 
 pub(crate) fn path_arg(path: &Path) -> String {
@@ -490,7 +447,14 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
         .collect();
     let root = project_dir.join("assets/characters");
     // Character folders in the project, then 3D models registered where they live.
-    let mut ids: Vec<String> = std::fs::read_dir(&root).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    let skip_names = ["approved-crops", "lineup", "expressions", "contact-parts-v1", "cast"];
+    let mut ids: Vec<String> = std::fs::read_dir(&root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| !skip_names.iter().any(|skip| name.eq_ignore_ascii_case(skip)))
+        .collect();
     for asset in s.project_assets.iter().filter(|a| a.kind == "model_3d") {
         let id = asset.id.replace('_', "-");
         if !ids.contains(&id) {

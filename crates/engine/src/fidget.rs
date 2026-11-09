@@ -194,7 +194,10 @@ fn compose(all: &Value, kind: &Value, p: &Value) -> Result<String> {
     if let Some(notes) = p["notes"].as_str().filter(|t| !t.trim().is_empty()) {
         parts.push(format!("Notes: {notes}"));
     }
-    parts.push(all["shared"].as_str().unwrap_or_default().to_string());
+    let shared = kind["shared_override"].as_str().or_else(|| all["shared"].as_str()).unwrap_or_default();
+    if !shared.is_empty() {
+        parts.push(shared.to_string());
+    }
     Ok(parts.join("\n"))
 }
 

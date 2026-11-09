@@ -131,10 +131,11 @@ pub(super) fn open(path: PathBuf) -> Result<Value, String> {
     Ok(json!({"ok": true, "timeline": path, "window": "opened"}))
 }
 
-/// Sends the engine's film commands to the open window, so they never edit its file behind it.
+/// Sends the engine's film commands to the open window when it has that timeline open.
 pub(super) fn install_film_host() {
     magic::CraftHub::set_film_host(Box::new(|doc, command, params| {
-        let slot = STUDIO.get()?.live.lock().ok()?;
+        let studio = STUDIO.get()?;
+        let slot = studio.live.lock().ok()?;
         let live = slot.as_ref().filter(|live| std::fs::canonicalize(&live.path).ok() == std::fs::canonicalize(doc).ok())?;
         Some(request(live, "engine.execute", json!({"command": command, "params": params})).and_then(|reply| {
             if reply["ok"] == true { Ok(reply["result"].clone()) } else { Err(reply["error"].as_str().unwrap_or("FilmCraft refused the command").to_owned()) }
@@ -241,10 +242,11 @@ pub(super) fn open_effect(path: PathBuf) -> Result<Value, String> {
     Ok(json!({"ok": true, "app": "effectcraft", "file": path, "window": "opened"}))
 }
 
-/// Sends the engine's EffectCraft commands to the open in-process window, so they never edit its file behind it.
+/// Sends the engine's EffectCraft commands to the open in-process window when it has that file open.
 pub(super) fn install_effect_host() {
     magic::CraftHub::set_effect_host(Box::new(|doc, command, params| {
-        let slot = EFFECT_STUDIO.get()?.live.lock().ok()?;
+        let studio = EFFECT_STUDIO.get()?;
+        let slot = studio.live.lock().ok()?;
         let live = slot.as_ref().filter(|live| std::fs::canonicalize(&live.path).ok() == std::fs::canonicalize(doc).ok())?;
         Some(request_effect(live, "engine.execute", json!({"command": command, "params": params})).and_then(|reply| {
             if reply["ok"] == true { Ok(reply["result"].clone()) } else { Err(reply["error"].as_str().unwrap_or("EffectCraft refused the command").to_owned()) }

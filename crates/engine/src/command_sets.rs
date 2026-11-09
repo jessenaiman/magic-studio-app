@@ -35,6 +35,9 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"scribbles.image"
             | b"scribbles.sheet"
             | b"scribbles.poses"
+            | b"scribbles.poses_2x2"
+            | b"scribbles.parts_chroma"
+            | b"scribbles.moppet"
             | b"scribbles.actions"
             | b"scribbles.layers"
             | b"scribbles.custom"
@@ -265,7 +268,6 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             requires_ui
         ),
         cmd!("ui.screenshot", "Capture window", [], None, "{\"output\":\"optional PNG path\"}", always, requires_ui),
-        cmd!("video.open_export", "Open Validated Export", [], None, "{path?, format?, preset?}", always, requires_ui),
         cmd!(
             "clipboard.import_image",
             "Paste clipboard artwork",
@@ -1029,13 +1031,21 @@ fn specs_character() -> Vec<CommandSpec> {
 /// Scribbles: Google Flow (Moppet Maker) app-window launcher, handoff asset ingestor, animated SVG builder, and video clip generator.
 fn specs_scribbles() -> Vec<CommandSpec> {
     vec![
-        cmd!("scribbles.connect", "Choose Codex for Scribbles (Craft AI)", ["Scribbles"], None, "{}", always, crate::craft_ai_codex::cmd_scribbles_connect),
         cmd!(
-            "scribbles.consent",
-            "Agree to Send Drawing Requests to Codex",
+            "scribbles.connect",
+            "Choose Provider for Scribbles (Codex Luna, AGY Flash, or Flow Browser-Agent)",
             ["Scribbles"],
             None,
-            r#"{"agree":"true, from the person","term":"one_hour, one_day or until_revoked"}"#,
+            r#"{"provider":"optional codex|agy|flow (default codex)","model":"optional gpt-6-luna|gemini-3.8-flash-medium|nano-banana-2.1"}"#,
+            always,
+            crate::craft_ai_codex::cmd_scribbles_connect
+        ),
+        cmd!(
+            "scribbles.consent",
+            "Agree to Send Drawing Requests to Scribbles Provider",
+            ["Scribbles"],
+            None,
+            r#"{"agree":"true, from the person","term":"one_hour, one_day or until_revoked","provider":"optional codex|agy|flow (omitted consents all three)"}"#,
             always,
             crate::craft_ai_codex::cmd_scribbles_consent
         ),
@@ -1117,6 +1127,33 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
             always,
             crate::scribbles::cmd_scribbles_poses
+        ),
+        cmd!(
+            "scribbles.poses_2x2",
+            "2x2 Moppet Pose Sheet (4 Poses) (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image\",\"prompt\":\"character description\",\"notes\":\"optional\",\"provider\":\"optional codex|agy|flow\",\"model\":\"optional\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_poses_2x2
+        ),
+        cmd!(
+            "scribbles.parts_chroma",
+            "Chroma-Green (#00FF00) Cutout Parts Sheet (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image\",\"prompt\":\"character description\",\"notes\":\"optional\",\"provider\":\"optional codex|agy|flow\",\"model\":\"optional\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_parts_chroma
+        ),
+        cmd!(
+            "scribbles.moppet",
+            "Local or Browser-Agent 3-Part Moppet Maker Pack (Character + Chroma Parts + 2x2 Poses + Ingest & Rig)",
+            ["Scribbles"],
+            None,
+            "{\"character\":\"character id\",\"prompt\":\"character description\",\"reference\":\"optional existing character PNG\",\"provider\":\"optional codex|agy|flow\",\"model\":\"optional\",\"reassemble\":true,\"rig\":true,\"open\":false}",
+            always,
+            crate::scribbles::cmd_scribbles_moppet
         ),
         cmd!(
             "scribbles.actions",
@@ -1276,7 +1313,6 @@ fn specs_storyboard() -> Vec<CommandSpec> {
 
 fn specs_film() -> Vec<CommandSpec> {
     vec![
-        query!("video.validate_export", "Validate Recorded Film Export", "{path?, format?, preset?}", crate::cmd::film::cmd_video_validate_export),
         query!("video.film", "Film Timeline, Preview and Export Status", "{}", crate::cmd::film::cmd_video_film),
         cmd!("video.preview", "Render a Film Preview (FilmCraft)", ["Studio"], None, "{}", always, crate::cmd::film::cmd_video_preview),
         cmd!("video.export", "Export the Film (FilmCraft)", ["Studio"], None, "{}", always, crate::cmd::film::cmd_video_export),

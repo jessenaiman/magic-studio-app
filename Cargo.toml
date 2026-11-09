@@ -18,7 +18,13 @@ magic-mcp = { path = "crates/mcp" }
 # Craft engines and domain crates (`storytold/*`, version-independent git tracking for `cargo update`)
 effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
 effectcraft-ui-egui = { git = "https://github.com/storytold/effectcraft" }
+filmcraft-codecs = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
+filmcraft-export = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-gpu = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-media = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-project = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-render = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-ui-egui = { git = "https://github.com/storytold/filmcraft" }
 

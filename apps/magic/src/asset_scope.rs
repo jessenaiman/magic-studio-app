@@ -115,6 +115,21 @@ fn grants(session: &Session, result: &Value) -> Grants {
         && safe_directory(parent)
     {
         plan.directories.insert(parent.to_owned());
+        if let Ok(canon) = parent.canonicalize()
+            && safe_directory(&canon)
+        {
+            plan.directories.insert(canon);
+        }
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                if let Ok(canon) = entry.path().canonicalize()
+                    && canon.is_dir()
+                    && safe_directory(&canon)
+                {
+                    plan.directories.insert(canon);
+                }
+            }
+        }
     }
     if let Some(workspace) = &session.lyrics_workspace
         && safe_directory(workspace)

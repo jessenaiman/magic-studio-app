@@ -131,6 +131,14 @@ impl CraftDoc {
             }
             return Ok(results);
         }
+        if let Some(in_proc) = super::run_embedded_doc_batch(self.target, &self.input_path, &self.work_path, steps, mutates) {
+            let results = in_proc?;
+            if mutates {
+                self.input_path = self.work_path.clone();
+                self.live_synced = false;
+            }
+            return Ok(results);
+        }
         let mut cmd = batch_command(self.target, &self.input_path, &self.work_path, steps, mutates)?;
         if mutates {
             self.input_path = self.work_path.clone();

@@ -126,7 +126,7 @@ export interface StoryboardUntraced {
   reason?: string;
 }
 export interface StoryboardCheckPage {
-  page: number; archetype: string; status?: "incomplete" | "review" | "complete";
+  page: number; archetype: string; section?: string | null; status?: "incomplete" | "review" | "complete";
   unfilled: Array<{ label: string; text?: string; fix: string }>;
   issues?: StoryboardIssue[];
   slots?: Record<string, StoryboardSlotStatus>;
@@ -136,7 +136,7 @@ export interface StoryboardCheckPage {
 /** A labelled frame from `storyboard.pages`; `bounds` are in the page's own `bounds` space. */
 export interface StoryboardSlot {
   id: number; label: string; kind: "text" | "image" | "other";
-  group: string; display: string; editable: boolean;
+  group: string; display: string; editable: boolean; locked?: boolean;
   text?: string | null; image?: string | null;
   bounds?: [number, number, number, number] | null; hidden: boolean; empty: boolean;
 }

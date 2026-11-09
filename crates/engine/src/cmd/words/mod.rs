@@ -538,12 +538,42 @@ impl crate::doc_state::ProjectDoc for WordsDesign {
     }
 }
 
+fn normalize_words_doc(mut doc: Value) -> Value {
+    if let Some(anims) = doc["animations"].as_array_mut() {
+        for anim in anims.iter_mut() {
+            let fallback_line = anim["scope"]["line_ids"].as_array().and_then(|arr| arr.first()).and_then(Value::as_str).unwrap_or("l1").to_owned();
+            if let Some(words) = anim["words"].as_array_mut() {
+                for w in words.iter_mut() {
+                    let wid_prefix = w["word_id"].as_str().and_then(|wid| wid.split_once('/').map(|(prefix, _)| prefix.to_owned()));
+                    if w["line_id"].as_str().is_none_or(str::is_empty) {
+                        w["line_id"] = json!(wid_prefix.clone().unwrap_or_else(|| fallback_line.clone()));
+                    }
+                    if w["sung_id"].as_str().is_none_or(str::is_empty) {
+                        w["sung_id"] = w["line_id"].clone();
+                    }
+                    if w["text"].as_str().is_none_or(str::is_empty)
+                        && let Some(word_str) = w["word"].as_str().map(str::to_owned)
+                    {
+                        w["text"] = json!(word_str);
+                    }
+                    if w["word"].as_str().is_none_or(str::is_empty)
+                        && let Some(text_str) = w["text"].as_str().map(str::to_owned)
+                    {
+                        w["word"] = json!(text_str);
+                    }
+                }
+            }
+        }
+    }
+    doc
+}
+
 pub(crate) fn load(s: &mut Session, dir: &Path) -> Result<Option<Value>> {
-    Ok(s.doc::<WordsDesign>(dir)?.map(|d| d.0))
+    Ok(s.doc::<WordsDesign>(dir)?.map(|d| normalize_words_doc(d.0)))
 }
 
 pub(crate) fn save(s: &mut Session, dir: &Path, doc: &Value) -> Result<()> {
-    s.save_doc(dir, &WordsDesign(doc.clone()))
+    s.save_doc(dir, &WordsDesign(normalize_words_doc(doc.clone())))
 }
 
 fn group_caption_lines(src: &[&Value]) -> Vec<[usize; 2]> {

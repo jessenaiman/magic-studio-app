@@ -17,9 +17,44 @@ pub use commands::{
 use crate::{EngineError, Result};
 
 /// Each page type and the slot label that marks it.
-pub const ARCHETYPES: &[(&str, &str)] = &[("cover", "cover_title"), ("world", "world_heading"), ("char", "char_heading"), ("scene", "scene_id")];
+pub const ARCHETYPES: &[(&str, &str)] =
+    &[("cover", "cover_title"), ("world", "world_heading"), ("char", "char_heading"), ("motion", "motion_heading"), ("scene", "scene_id")];
 
-const TITLE_LABELS: &[&str] = &["cover_title", "world_heading", "char_heading", "scene_title", "scene_id", "title"];
+const TITLE_LABELS: &[&str] = &["cover_title", "world_heading", "char_heading", "motion_heading", "scene_title", "scene_id", "title"];
+
+fn item_bounds(item: &Value) -> Option<[f64; 4]> {
+    let xf = item.get("xf").and_then(Value::as_array);
+    let (a, b, c, d, tx, ty) = match xf {
+        Some(v) if v.len() == 6 => (
+            v[0].as_f64().unwrap_or(1.0),
+            v[1].as_f64().unwrap_or(0.0),
+            v[2].as_f64().unwrap_or(0.0),
+            v[3].as_f64().unwrap_or(1.0),
+            v[4].as_f64().unwrap_or(0.0),
+            v[5].as_f64().unwrap_or(0.0),
+        ),
+        _ => (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+    };
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for sp in item["path"]["subpaths"].as_array().into_iter().flatten() {
+        for anchor in sp["anchors"].as_array().into_iter().flatten() {
+            if let Some(p) = anchor["p"].as_array()
+                && p.len() >= 2
+                && let (Some(px), Some(py)) = (p[0].as_f64(), p[1].as_f64())
+            {
+                let (x, y) = (a * px + c * py + tx, b * px + d * py + ty);
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+        }
+    }
+    (min_x.is_finite() && max_x > min_x && max_y > min_y).then_some([min_x, min_y, max_x, max_y])
+}
 
 pub(super) type Labels = HashMap<String, u64>;
 
@@ -29,6 +64,7 @@ pub(super) struct Slot {
     pub(super) kind: &'static str,
     pub(super) text: Option<String>,
     pub(super) image: Option<String>,
+    pub(super) bounds: Option<[f64; 4]>,
     pub(super) hidden: bool,
     pub(super) locked: bool,
 }
@@ -41,6 +77,7 @@ impl Slot {
             "kind": self.kind,
             "text": self.text,
             "image": self.image,
+            "bounds": self.bounds,
             "hidden": self.hidden,
             "locked": self.locked,
         })
@@ -51,6 +88,7 @@ pub(super) struct Page {
     pub(super) index: usize,
     pub(super) archetype: String,
     pub(super) section: Option<String>,
+    pub(super) bounds: [f64; 4],
     pub(super) slots: Vec<Slot>,
 }
 
@@ -77,6 +115,7 @@ impl Page {
             "archetype": self.archetype,
             "section": self.section,
             "title": self.title(),
+            "bounds": self.bounds,
             "slots": slots,
         })
     }
@@ -185,6 +224,8 @@ impl Storyboard {
     fn pages(&mut self) -> Result<Vec<Page>> {
         let doc = read_document_json(self.work_path())?;
         let parents = parent_labels(&doc);
+        let default_w = doc["settings"]["pageWidth"].as_f64().unwrap_or(1600.0);
+        let default_h = doc["settings"]["pageHeight"].as_f64().unwrap_or(1000.0);
         let mut pages = Vec::new();
         for (index, spread) in doc["spreads"].as_array().into_iter().flatten().enumerate() {
             let mut slots = Vec::new();
@@ -206,12 +247,14 @@ impl Storyboard {
                 };
                 let hidden = item["hidden"].as_bool().unwrap_or(false);
                 let locked = item["locked"].as_bool().unwrap_or(false);
-                slots.push(Slot { label: label.to_string(), id, kind, text, image, hidden, locked });
+                let bounds = item_bounds(item);
+                slots.push(Slot { label: label.to_string(), id, kind, text, image, bounds, hidden, locked });
             }
             let labels: Labels = slots.iter().map(|s| (s.label.clone(), s.id)).collect();
             let archetype = ARCHETYPES.iter().find(|(_, marker)| labels.contains_key(*marker)).map_or("scene", |(name, _)| *name).to_string();
             let section = spread["pages"][0]["parent"].as_u64().and_then(|pid| parents.get(&pid).cloned());
-            pages.push(Page { index, archetype, section, slots });
+            let bounds = [0.0, 0.0, default_w, default_h];
+            pages.push(Page { index, archetype, section, bounds, slots });
         }
         Ok(pages)
     }

@@ -7,7 +7,8 @@
 
 use crate::{EngineError, Result, Session};
 use craft_scribbles::{
-    DEFAULT_MOPPET_MAKER_URL, DEFAULT_STORYBOARD_PACK_TOOL_URL, LOCKED_MOPPETS, StoryboardPackItem, VideoClipRequest, classify_animation_style,
+    DEFAULT_FLOW_PROJECT_URL, DEFAULT_MOPPET_MAKER_URL, DEFAULT_STORYBOARD_PACK_TOOL_URL, LOCKED_MOPPETS, StoryboardPackItem, VideoClipRequest,
+    classify_animation_style,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -328,6 +329,18 @@ fn resolve_template_request(p: &Value) -> Result<(Value, Value)> {
         return Ok((p.clone(), meta));
     }
 
+    // 4. Direct prompt without an explicit template defaults to `custom` so `scribbles.generate prompt=...` works across codex, agy, and flow.
+    if p["prompt"].as_str().is_some_and(|v| !v.trim().is_empty()) {
+        let prepared = crate::fidget::PreparedDrawing::prepare(p, "custom")?;
+        let mut request = prepared.request;
+        for key in SAVE_TARGET_KEYS {
+            if let Some(v) = p.get(*key) {
+                request[*key] = v.clone();
+            }
+        }
+        return Ok((request, prepared.fidget));
+    }
+
     Err(EngineError::InvalidParams(
         "Scribbles requires a template (`kind`, `template`, or `fidget` from `fidget.prepare`); inspect `scribbles.templates`".into(),
     ))
@@ -356,6 +369,30 @@ fn apply_template_save_command(s: &mut Session, request: &Value, metadata: &Valu
             "receipt": receipt,
         }));
     }
+    if save_cmd == "character.sprite"
+        && !image_path.is_empty()
+        && let Some(char_id) = request["character"].as_str().filter(|v| !v.trim().is_empty())
+    {
+        let action_name = request["action"].as_str().unwrap_or("walk");
+        if let Ok(receipt) = s.execute(
+            "character.sprite",
+            json!({
+                "character": char_id,
+                "name": action_name,
+                "action": action_name,
+                "sheet": image_path,
+                "cols": 4,
+                "rows": 2,
+            }),
+        ) {
+            return Ok(json!({
+                "command": "character.sprite",
+                "character": char_id,
+                "action": action_name,
+                "receipt": receipt,
+            }));
+        }
+    }
     Ok(json!({
         "command": save_cmd,
         "asset_id": generated["asset_id"],
@@ -363,11 +400,42 @@ fn apply_template_save_command(s: &mut Session, request: &Value, metadata: &Valu
     }))
 }
 
-/// Generate a final prompt gated by a Scribbles template. Supports single or looped (`count` 1..=4)
-/// `image_gen` execution and runs the template's prescribed save command.
+/// Resolve the active Scribbles provider from the request, `scribbles.provider`, or `image.provider`.
+fn resolve_scribbles_provider(request: &Value) -> Result<String> {
+    if let Some(p) = request["provider"].as_str().map(str::trim).filter(|v| !v.is_empty()) {
+        return Ok(p.to_owned());
+    }
+    let settings = crate::project_settings::stored_settings();
+    if let Some(p) = settings["scribbles"]["provider"].as_str().map(str::trim).filter(|v| !v.is_empty()) {
+        return Ok(p.to_owned());
+    }
+    if let Some(p) = settings["image"]["provider"].as_str().map(str::trim).filter(|v| !v.is_empty()) {
+        return Ok(p.to_owned());
+    }
+    Err(EngineError::InvalidParams(
+        "no Scribbles provider is chosen: pass `provider` (codex, agy, or flow), or set it with `magic-cli exec scribbles.connect provider=codex`".into(),
+    ))
+}
+
+/// Generate a final prompt gated by a Scribbles template (or open Flow Moppet Maker when called
+/// with `open=true` or without a prompt/template). Supports single or looped (`count` 1..=4)
+/// execution across `codex` (Luna), `agy` (Flash), and `flow` (Browser-Agent).
 pub fn cmd_scribbles_generate(s: &mut Session, p: &Value) -> Result<Value> {
     if !p.is_object() {
         return Err(EngineError::InvalidParams("Scribbles needs a JSON object with a template and prompt".into()));
+    }
+    if p["open"].as_bool() == Some(true)
+        || (p["prompt"].as_str().is_none_or(|v| v.trim().is_empty())
+            && p.get("fidget").is_none()
+            && p.get("kind").is_none()
+            && p.get("template").is_none()
+            && p["markdown"].as_str().is_none_or(|v| v.trim().is_empty()))
+    {
+        return cmd_scribbles_open(s, p);
+    }
+    let kind_hint = p["kind"].as_str().or_else(|| p["template"].as_str()).or_else(|| p["fidget"]["kind"].as_str());
+    if kind_hint == Some("moppet") {
+        return cmd_scribbles_moppet(s, p);
     }
     if p.get("poses").is_some() || p.get("rig_parts").is_some() {
         return Err(EngineError::InvalidParams("Prepare pose/rig instructions in the final prompt before calling Scribbles".into()));
@@ -376,19 +444,9 @@ pub fn cmd_scribbles_generate(s: &mut Session, p: &Value) -> Result<Value> {
     if request["prompt"].as_str().is_none_or(|v| v.trim().is_empty()) {
         return Err(EngineError::InvalidParams("Scribbles needs a nonempty final prompt".into()));
     }
-    // The provider comes from the request or from the Scribbles settings, nowhere else:
-    // an unset choice is an error that says how to make it.
-    let settings = crate::project_settings::stored_settings();
-    if request.get("provider").is_none_or(Value::is_null) {
-        request["provider"] = settings["scribbles"].get("provider").filter(|v| !v.is_null()).cloned().ok_or_else(|| {
-            EngineError::InvalidParams(
-                "no Scribbles provider is chosen: pass `provider`, or set it with `magic-cli exec prefs.set key=scribbles.provider value=codex`".into(),
-            )
-        })?;
-    }
-    if request["provider"].as_str().is_none_or(|v| v.trim().is_empty()) {
-        return Err(EngineError::InvalidParams("scribbles provider must be a nonempty string".into()));
-    }
+    let provider = resolve_scribbles_provider(&request)?;
+    request["provider"] = json!(provider);
+
     // A template that saves into the storyboard needs to know where, before anything is drawn.
     if metadata["save_command"] == "storyboard.set" && request.get("page").is_none() && request.get("scene").is_none() {
         return Err(EngineError::InvalidParams(
@@ -430,6 +488,11 @@ pub fn cmd_scribbles_generate(s: &mut Session, p: &Value) -> Result<Value> {
 fn draw(s: &mut Session, p: &Value, name: &str) -> Result<Value> {
     let prepared = crate::fidget::PreparedDrawing::prepare(p, name)?;
     let mut request = prepared.request;
+    for key in SAVE_TARGET_KEYS {
+        if let Some(v) = p.get(*key) {
+            request[*key] = v.clone();
+        }
+    }
     request["fidget"] = prepared.fidget;
     cmd_scribbles_generate(s, &request)
 }
@@ -446,11 +509,154 @@ kind_command!(cmd_scribbles_new, "new");
 kind_command!(cmd_scribbles_image, "image");
 kind_command!(cmd_scribbles_sheet, "sheet");
 kind_command!(cmd_scribbles_poses, "poses");
+kind_command!(cmd_scribbles_poses_2x2, "poses_2x2");
+kind_command!(cmd_scribbles_parts_chroma, "parts_chroma");
 kind_command!(cmd_scribbles_actions, "actions");
 kind_command!(cmd_scribbles_layers, "layers");
 kind_command!(cmd_scribbles_custom, "custom");
 
-/// Templates remain discoverable at the existing compatibility endpoint.
+/// Local Moppet Maker 3-part bundle runner (`character.png` -> `#00FF00` `parts-sheet.png` -> 2x2
+/// `pose-sheet.png`) with reference chaining, auto-ingest into `characters/<id>/`, animated SVG
+/// generation (`character.svg`), and optional `#00FF00` cutout layer reassembly + EffectCraft rig.
+/// Works identically across `codex` (Luna), `agy` (Flash), and `flow` (Browser-Agent).
+pub fn cmd_scribbles_moppet(s: &mut Session, p: &Value) -> Result<Value> {
+    if p["open"].as_bool() == Some(true) {
+        return cmd_scribbles_open(s, p);
+    }
+    let project = s.project_path.clone().ok_or_else(|| EngineError::InvalidParams("Open a project before running scribbles.moppet".into()))?;
+    let root = project.parent().ok_or_else(|| EngineError::InvalidParams("Project has no parent directory".into()))?;
+    let char_raw = p["character"].as_str().or_else(|| p["name"].as_str()).filter(|v| !v.trim().is_empty()).unwrap_or("moppet");
+    let char_id = crate::workspace::sanitize_asset_id(char_raw);
+    let prompt = p["prompt"].as_str().map(str::trim).filter(|v| !v.is_empty()).unwrap_or(char_raw);
+    let provider = resolve_scribbles_provider(p)?;
+    let model = p["model"].as_str().filter(|v| !v.trim().is_empty());
+
+    let staging_dir = root.join("assets/characters").join(&char_id).join("scribbles_moppet_bundle");
+    std::fs::create_dir_all(&staging_dir)?;
+
+    // 1. Character base image (`character.png`)
+    let char_png = staging_dir.join("character.png");
+    let existing_ref =
+        p["reference"].as_str().filter(|v| !v.trim().is_empty()).map(|raw| crate::workspace::resolve_workspace_path(s, raw)).filter(|pb| pb.is_file());
+    let char_gen = if let Some(ref ref_path) = existing_ref
+        && p["reuse_reference"].as_bool().unwrap_or(false)
+    {
+        std::fs::copy(ref_path, &char_png)?;
+        json!({ "image": char_png, "reused_reference": true })
+    } else {
+        let mut req1 = json!({
+            "prompt": prompt,
+            "character": char_id,
+            "provider": provider,
+            "name": format!("{char_id}-character"),
+        });
+        if let Some(m) = model {
+            req1["model"] = json!(m);
+        }
+        if let Some(notes) = p["notes"].as_str() {
+            req1["notes"] = json!(notes);
+        }
+        let step1 = if let Some(ref ref_path) = existing_ref {
+            req1["reference"] = json!(ref_path);
+            draw(s, &req1, "image")?
+        } else {
+            draw(s, &req1, "new")?
+        };
+        let drawn_path = step1["image"].as_str().ok_or_else(|| EngineError::InvalidParams("character draw produced no image path".into()))?;
+        std::fs::copy(drawn_path, &char_png)?;
+        step1
+    };
+
+    // 2. Chroma-green parts sheet (`parts-sheet.png` on `#00FF00`) referencing `character.png`
+    let parts_png = staging_dir.join("parts-sheet.png");
+    let mut req2 = json!({
+        "prompt": prompt,
+        "reference": char_png,
+        "character": char_id,
+        "provider": provider,
+        "name": format!("{char_id}-parts-sheet"),
+    });
+    if let Some(m) = model {
+        req2["model"] = json!(m);
+    }
+    let step2 = draw(s, &req2, "parts_chroma")?;
+    let drawn_parts = step2["image"].as_str().ok_or_else(|| EngineError::InvalidParams("parts_chroma draw produced no image path".into()))?;
+    std::fs::copy(drawn_parts, &parts_png)?;
+    let root_parts_png = root.join("assets/characters").join(&char_id).join("parts-sheet.png");
+    let _ = std::fs::copy(&parts_png, &root_parts_png);
+
+    // 3. 2x2 Moppet pose sheet (`pose-sheet.png`) referencing `character.png`
+    let poses_png = staging_dir.join("pose-sheet.png");
+    let mut req3 = json!({
+        "prompt": prompt,
+        "reference": char_png,
+        "character": char_id,
+        "provider": provider,
+        "name": format!("{char_id}-pose-sheet"),
+    });
+    if let Some(m) = model {
+        req3["model"] = json!(m);
+    }
+    let step3 = draw(s, &req3, "poses_2x2")?;
+    let drawn_poses = step3["image"].as_str().ok_or_else(|| EngineError::InvalidParams("poses_2x2 draw produced no image path".into()))?;
+    std::fs::copy(drawn_poses, &poses_png)?;
+
+    // 4. Write `handoff.json` and run `ingest_folder_and_register` (slices 2x2 poses, builds animated SVG, registers views/front)
+    let handoff_doc = json!({
+        "name": char_raw,
+        "id": char_id,
+        "provider": provider,
+        "prompt": prompt,
+        "character_image": "character.png",
+        "parts_sheet": "parts-sheet.png",
+        "pose_sheet": "pose-sheet.png",
+    });
+    craft_atomic::atomic_write(&staging_dir.join("handoff.json"), &serde_json::to_vec_pretty(&handoff_doc).unwrap_or_default())?;
+    let ingested = cmd_scribbles_ingest(s, &json!({ "dir": staging_dir, "character": char_id }))?;
+
+    // 5. Reassemble `#00FF00` parts sheet into cut layers + rig if requested (default true)
+    let reassembled = if p["reassemble"].as_bool().unwrap_or(true) {
+        cmd_scribbles_reassemble(
+            s,
+            &json!({
+                "character": char_id,
+                "view": "front",
+                "sheet": parts_png,
+                "rig": p["rig"].as_bool().unwrap_or(true),
+            }),
+        )
+        .ok()
+    } else {
+        None
+    };
+
+    Ok(json!({
+        "ok": true,
+        "format": "magic.scribbles-moppet-pack",
+        "character": char_id,
+        "provider": provider,
+        "image": char_png,
+        "character_image": char_png,
+        "parts_sheet": parts_png,
+        "pose_sheet": poses_png,
+        "steps": {
+            "character": char_gen,
+            "parts_sheet": step2,
+            "pose_sheet": step3,
+        },
+        "ingested": ingested,
+        "reassembled": reassembled,
+        "scribbles": {
+            "kind": "moppet",
+            "prompt": prompt,
+            "canvas": [1024, 1024],
+            "canvas_matches": true,
+        }
+    }))
+}
+
+/// Templates and provider options (local `codex` Luna, local `agy` Flash, and `flow` Browser-Agent)
+/// remain discoverable at `scribbles.templates`.
 pub fn cmd_scribbles_templates(_: &mut Session, _: &Value) -> Result<Value> {
     let all = crate::fidget::templates()?;
     Ok(json!({
@@ -458,6 +664,35 @@ pub fn cmd_scribbles_templates(_: &mut Session, _: &Value) -> Result<Value> {
         "model": all["model"],
         "note": all["note"],
         "kinds": all["kinds"],
+        "providers": [
+            {
+                "id": crate::craft_ai_codex::CODEX_PROVIDER,
+                "label": "Codex (GPT-6 Luna · Local Templates)",
+                "default_model": crate::craft_ai_codex::CODEX_MODEL,
+                "mode": "local"
+            },
+            {
+                "id": crate::craft_ai_codex::AGY_PROVIDER,
+                "label": "AGY (Gemini 3.8 Flash · Local Templates)",
+                "default_model": crate::craft_ai_codex::AGY_MODEL,
+                "mode": "local"
+            },
+            {
+                "id": crate::craft_ai_codex::FLOW_PROVIDER,
+                "label": "Google Flow (Nano Banana · Browser-Agent)",
+                "default_model": crate::craft_ai_codex::FLOW_MODEL,
+                "mode": "browser-agent"
+            }
+        ],
+        "flow": {
+            "provider": "flow",
+            "tool": "Moppet Maker",
+            "url": DEFAULT_MOPPET_MAKER_URL,
+            "storyboard_pack_tool": "Storyboard & Animation Master Pack",
+            "storyboard_pack_url": DEFAULT_STORYBOARD_PACK_TOOL_URL,
+            "project_url": DEFAULT_FLOW_PROJECT_URL,
+            "outputs": ["character.png", "parts-sheet.png", "pose-sheet.png", "handoff.json"],
+        },
         "craft_ai": crate::fidget::craft_ai_status(),
     }))
 }

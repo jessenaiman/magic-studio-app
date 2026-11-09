@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { executeCommand } from "../api";
 import { ExportReport, exportIconState } from "../export-state";
 import { workspaceDrafts } from "../workspace-drafts";
@@ -38,12 +39,12 @@ export function FilmExportButton({project, options, disabled, onBusy, onToast}: 
     return () => { ++revision.current; window.clearInterval(timer); };
   }, [project, optionsKey]);
   const status = exportIconState(report, running, error, drafts);
-  const label = status === "running" ? "Rendering final video" : status === "ready" ? "Open validated export" : status === "error" ? "Export failed · click to retry" : "Render final video";
+  const label = status === "running" ? "Rendering final video" : status === "ready" ? "Open exported film" : status === "error" ? "Export failed · click to retry" : "Render final video";
   const activate = async () => {
     if (inFlight.current) return;
     if (editorDrafts()) { onToast("Save the editor changes before exporting the final video"); return; }
     if (status === "ready" && report?.export?.path) {
-      try { await executeCommand("video.open_export", {...JSON.parse(optionsKey), _expected_project:project}); } catch (failure) { onToast(String(failure)); }
+      try { await openPath(report.export.path); } catch (failure) { onToast(String(failure)); }
       return;
     }
     const version = revision.current;

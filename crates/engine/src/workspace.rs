@@ -329,7 +329,7 @@ pub fn cmd_photo_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     Ok(serde_json::json!({"ok": true, "path": path, "pcraft": save, "info": info, "via": "photocraft-cli"}))
 }
 
-/// Run EffectCraft via installed `effectcraft-cli` (system app pattern).
+/// Run EffectCraft via `CraftHub` (`effectcraft_engine` in-process or live `--control` window).
 pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     let raw = p["path"].as_str().ok_or_else(|| EngineError::InvalidParams("path=<.ecproj> is required".into()))?;
     let path = resolve_workspace_path(s, raw);
@@ -340,42 +340,10 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     } else {
         return Err(EngineError::InvalidParams("id=<effectcraft command> or steps=[...] is required".into()));
     };
-    let named: Vec<(String, Value)> = steps
-        .iter()
-        .filter_map(|step| {
-            let id = step["id"].as_str().or_else(|| step["command"].as_str())?;
-            Some((id.to_owned(), step.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))))
-        })
-        .collect();
-    if let Some(results) = crate::cmd::character::effect_in_window(&path, &named, p["save"] == true) {
-        return Ok(serde_json::json!({"ok": true, "path": path, "results": results?, "via": "effectcraft window"}));
-    }
-    let cli = find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    let mut cmd = std::process::Command::new(&cli);
-    cmd.arg("--json").arg("--project").arg(&path).arg("run").arg("--commands").arg("-");
-    if p["save"] == true {
-        cmd.arg("--save");
-    }
-    cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        use std::io::Write;
-        let bytes = serde_json::to_vec(&steps).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-        stdin.write_all(&bytes)?;
-    }
-    let out = child.wait_with_output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    if !out.status.success() {
-        return Err(EngineError::ExternalTool("effectcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
-    }
-    // `--json` makes EffectCraft answer one array of `{command, result}`, one per step.
-    let results: Value = serde_json::from_slice(&out.stdout).map_err(|e| {
-        EngineError::ExternalTool(
-            "effectcraft-cli".into(),
-            format!("batch reply is not JSON: {e}: {}", String::from_utf8_lossy(&out.stdout).chars().take(200).collect::<String>()),
-        )
-    })?;
+    let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let results = crate::cmd::character::effectcraft(dir, Some(&path), &steps, p["save"] == true)?;
     let info = craft_doc_info(&path);
-    Ok(serde_json::json!({"ok": true, "path": path, "info": info, "results": results, "via": "effectcraft-cli"}))
+    Ok(serde_json::json!({"ok": true, "path": path, "info": info, "results": results, "via": "effectcraft_engine"}))
 }
 
 /// Run VectorCraft via installed `vectorcraft-cli` (system app, MCP/CLI pattern).
