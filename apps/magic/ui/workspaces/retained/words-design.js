@@ -565,17 +565,17 @@ class WordsTimelineController {
     const scaleHandle = (corner) => el("span", {
       class: `lyric-handle lyric-handle-scale ${corner}`,
       "data-corner": corner,
-      title: "Drag corner to scale word size",
+      title: "Drag corner to scale word size (Shift-drag for non-uniform Scale X / Scale Y)",
       onpointerdown: (e) => {
         e.preventDefault();
         e.stopPropagation();
         wordsPanel.item = i;
-        wordsPanel.drag = { mode: "scale", corner, i, x: e.clientX, y: e.clientY, startSize: it.size || 68, scale: world.getBoundingClientRect().width / W, moved: false };
+        wordsPanel.drag = { mode: "scale", corner, i, x: e.clientX, y: e.clientY, startSize: it.size || 68, startScaleX: it.scale_x ?? 100, startScaleY: it.scale_y ?? 100, scale: world.getBoundingClientRect().width / W, moved: false };
       }
     });
     const rotHandle = el("span", {
       class: "lyric-handle lyric-handle-rot",
-      title: "Drag to tilt word (-45° to +45°)",
+      title: "Drag to rotate word (-360° to +360°)",
       onpointerdown: (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -583,7 +583,17 @@ class WordsTimelineController {
         wordsPanel.drag = { mode: "rotate", i, x: e.clientX, y: e.clientY, startRot: it.rotate || 0, scale: world.getBoundingClientRect().width / W, moved: false };
       }
     });
-    return [rotHandle, scaleHandle("nw"), scaleHandle("ne"), scaleHandle("sw"), scaleHandle("se")];
+    const skewHandle = el("span", {
+      class: "lyric-handle lyric-handle-skew",
+      title: "Drag to skew word (-85° to +85°, Shift-drag for Skew Axis)",
+      onpointerdown: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        wordsPanel.item = i;
+        wordsPanel.drag = { mode: "skew", i, x: e.clientX, y: e.clientY, startSkew: it.skew || 0, startSkewAxis: it.skew_axis || 0, scale: world.getBoundingClientRect().width / W, moved: false };
+      }
+    });
+    return [rotHandle, skewHandle, scaleHandle("nw"), scaleHandle("ne"), scaleHandle("sw"), scaleHandle("se")];
   }
   flowArrowsSvg(design, words, W, H) {
     const items = design.items || [];
@@ -625,22 +635,46 @@ class WordsTimelineController {
     const heroIdx = (design.items || []).findIndex((x) => (x.size || 0) >= 140 || x.motion === "pop");
     return i === (heroIdx >= 0 ? heroIdx : 0);
   }
+  isDarkFillColor(hex) {
+    const clean = String(hex || "").trim().replace(/^#/, "");
+    if (clean.length !== 6) return false;
+    const r = parseInt(clean.slice(0, 2), 16), g = parseInt(clean.slice(2, 4), 16), b = parseInt(clean.slice(4, 6), 16);
+    if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return false;
+    return (0.299 * r + 0.587 * g + 0.114 * b) < 88;
+  }
   applyItemVars(node, it, local, settled, pulse, tx, ty) {
-    if (it.outline) {
+    const effectiveOutline = it.outline || (wordsPanel.scene && this.isDarkFillColor(it.color) ? "#FFF8E9" : null);
+    if (effectiveOutline) {
       node.dataset.outline = "";
-      node.style.setProperty("--outline", it.outline);
+      node.style.setProperty("--outline", effectiveOutline);
+      const strokeW = it.stroke_width != null && it.stroke_width > 0 ? it.stroke_width : Math.max(3, Math.round((it.size || 58) * 0.065));
+      node.style.setProperty("--stroke-w", `${strokeW}px`);
+    } else if ((it.stroke_width || 0) > 0) {
+      node.dataset.outline = "";
+      node.style.setProperty("--outline", "#2a1205");
+      node.style.setProperty("--stroke-w", `${it.stroke_width}px`);
     }
-    const sy = it.motion === "pop" ? pulse : it.motion === "settle" ? 1 - 0.035 * settled : 1;
+    if (it.warp_path && it.warp_path !== "none") {
+      node.dataset.warpPath = it.warp_path;
+    }
+    const baseSx = (it.scale_x ?? 100) / 100;
+    const baseSy = (it.scale_y ?? 100) / 100;
+    const sy = (it.motion === "pop" ? pulse : it.motion === "settle" ? 1 - 0.035 * settled : 1) * baseSy;
+    const sx = (it.motion === "pop" ? pulse : 1) * baseSx;
+    const warpDy = it.warp_path === "arc_up" ? -28 : it.warp_path === "arc_down" ? 28 : it.warp_path === "wave" ? -16 : it.warp_path === "diagonal" ? -22 : 0;
+    const warpRot = it.warp_path === "diagonal" ? -8 : 0;
     for (const [key, value] of [
       ["--x", `${it.x}px`],
       ["--y", `${it.y}px`],
       ["--size", `${it.size}px`],
       ["--ink", it.color],
-      ["--rot", `${it.rotate}deg`],
-      ["--o", String(wordsEase.out2(wordsClamp((local + 0.4) / 0.4)))],
+      ["--rot", `${(it.rotate || 0) + warpRot}deg`],
+      ["--skew", `${it.skew || 0}deg`],
+      ["--tracking", `${((it.tracking || 0) * 0.002).toFixed(3)}em`],
+      ["--o", String(wordsEase.out2(wordsClamp((local + 0.4) / 0.4)) * ((it.opacity ?? 100) / 100))],
       ["--tx", `${tx}px`],
-      ["--ty", `${ty}px`],
-      ["--sx", String(it.motion === "pop" ? pulse : 1)],
+      ["--ty", `${ty + warpDy}px`],
+      ["--sx", String(sx)],
       ["--sy", String(sy)]
     ])
       node.style.setProperty(key, value);
@@ -830,9 +864,14 @@ class WordsTimelineController {
         }
       }
     }
+    const ecSurfaceImg = el("img", {
+      class: "lyric-ec-surface",
+      alt: "EffectCraft live composition surface",
+      hidden: !wordsPanel.showEcSurface
+    });
     const stageModes = el("div", { class: "lyric-stage-modes" }, el("button", {
       class: `lyric-mode-pill${!wordsPanel.drawMode ? " active" : ""}`,
-      title: "Drag, scale & tilt word tokens directly on the 16:9 stage",
+      title: "Drag, scale, rotate (-360°..360°) & skew (-85°..85°) word tokens directly on the 16:9 stage",
       onclick: () => {
         wordsPanel.drawMode = false;
         wordsPanel.inspectorTab = "word";
@@ -853,23 +892,69 @@ class WordsTimelineController {
       }
     }, "✎ Draw Motion Overlay"), el("button", {
       class: "lyric-mode-pill warp",
-      title: "Cycle spatial trajectory choreography across the stage",
+      title: "Cycle EffectCraft mask warp path on the active word token (none → arc_up → arc_down → wave → diagonal)",
       onclick: () => {
         const lid = wordsPanel.line || wordsLines(anim)[0]?.id;
         if (!lid)
           return;
-        const order = (wordsChoreographies().map((c) => c.id).length ? wordsChoreographies().map((c) => c.id) : ["cascade", "scatter", "poster", "stack", "plain"]);
-        wordsPanel.choreoIdx = ((wordsPanel.choreoIdx || 0) + 1) % order.length;
-        wordsPanel.designs.set(lid, wordsDesignController.layout(anim, lid, order[wordsPanel.choreoIdx]));
-        wordsRender();
+        const warps = ["none", "arc_up", "arc_down", "wave", "diagonal"];
+        wordsDesignEdit(anim, lid, (d) => {
+          const idx = wordsPanel.item ?? 0;
+          const target = d.items[idx] || d.items[0];
+          if (!target) return;
+          const cur = warps.indexOf(target.warp_path || "none");
+          target.warp_path = warps[(cur + 1) % warps.length];
+          toast(`EffectCraft Warp Path: ${target.warp_path}`);
+        });
+        wordsStageController?.syncLiveEffectCraft?.();
       }
-    }, "⤴ Warp Path"));
-    const hint = el("div", { class: "lyric-stage-hint" }, wordsPanel.drawMode ? "Draw Mode Active: Click & drag on stage to sketch freehand SVG motion overlays" : "Drag any word to adjust spatial trajectory · Click token below to choreograph");
-    const box = el("div", { class: `lyric-canvas${bgImg || stageVideo ? " has-scene-bg" : ""}${wordsPanel.drawMode ? " draw-mode" : ""}`, "aria-label": "Line designer" }, bgImg, stageVideo, world, stageModes, hint);
+    }, "⤴ Warp Path"), el("button", {
+      class: `lyric-mode-pill${wordsPanel.showEcSurface ? " active" : ""}`,
+      title: "Toggle live EffectCraft frame preview from lettering/lyrics.ecproj on the stage",
+      onclick: () => {
+        wordsPanel.showEcSurface = !wordsPanel.showEcSurface;
+        wordsRender();
+        if (wordsPanel.showEcSurface) {
+          this.refreshEcSurface(wordsPanel.time);
+        }
+      }
+    }, "✦ EC Render"), el("button", {
+      class: "lyric-mode-pill",
+      title: "Open lettering/lyrics.ecproj in the live EffectCraft surface",
+      onclick: () => wordsStageController?.openEffectCraftSurface?.()
+    }, "EffectCraft ↗"));
+    const hint = el("div", { class: "lyric-stage-hint" }, wordsPanel.drawMode ? "Draw Mode Active: Click & drag on stage to sketch freehand SVG motion overlays" : "Drag word to move · Top circle to rotate 360° · Amber diamond to skew · Shift-corner for Scale X/Y");
+    const box = el("div", { class: `lyric-canvas${bgImg || stageVideo ? " has-scene-bg" : ""}${wordsPanel.drawMode ? " draw-mode" : ""}${wordsPanel.showEcSurface ? " ec-surface-active" : ""}`, "aria-label": "Line designer" }, bgImg, stageVideo, ecSurfaceImg, world, stageModes, hint);
     this.bindStageDraw(box, world, anim);
-    wordsPanel.canvas = { box, world, bgImg, stageVideo };
+    wordsPanel.canvas = { box, world, bgImg, stageVideo, ecSurfaceImg };
+    if (wordsPanel.showEcSurface) {
+      this.refreshEcSurface(wordsPanel.time);
+    }
     wordsFitter.observe(box);
     return box;
+  }
+  refreshEcSurface(t = wordsPanel.time) {
+    const canvas = wordsPanel.canvas;
+    if (!canvas?.ecSurfaceImg || !wordsPanel.showEcSurface) return;
+    const rounded = Math.round((Number(t) || 0) * 24) / 24;
+    if (wordsPanel.ecSurfacePending) {
+      wordsPanel.ecSurfaceQueuedTime = rounded;
+      return;
+    }
+    wordsPanel.ecSurfacePending = true;
+    void wordsCommand("words.preview_frame", { time: rounded, kind: "stage", scale: 0.67 }).then((res) => {
+      if (res?.data_url && wordsPanel.canvas?.ecSurfaceImg) {
+        wordsPanel.canvas.ecSurfaceImg.src = res.data_url;
+        wordsPanel.canvas.ecSurfaceImg.hidden = false;
+      }
+    }).catch(() => {}).finally(() => {
+      wordsPanel.ecSurfacePending = false;
+      if (wordsPanel.ecSurfaceQueuedTime != null && wordsPanel.ecSurfaceQueuedTime !== rounded) {
+        const next = wordsPanel.ecSurfaceQueuedTime;
+        wordsPanel.ecSurfaceQueuedTime = null;
+        this.refreshEcSurface(next);
+      }
+    });
   }
   motionCanvas(anim) {
     const bg = this.activeBackdrop(anim);
@@ -952,6 +1037,9 @@ class WordsTimelineController {
       return;
     }
     this.drawLine(canvas.world, anim, wordsPanel.line, t, true);
+    if (wordsPanel.showEcSurface && !wordsPanel.drag) {
+      this.refreshEcSurface(t);
+    }
   }
   syncPlayTime(t) {
     wordsPanel.time = t;

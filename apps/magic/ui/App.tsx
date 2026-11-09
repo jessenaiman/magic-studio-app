@@ -1,4 +1,5 @@
 import { AnimationView } from "./views/AnimationView";
+import { FidgetPanel } from "./components/FidgetPanel";
 import { PreservedWorkspaces } from "./components/RestoredWorkspace";
 import { AppFooter } from "./components/AppFooter";
 import { StageAssets } from "./components/StageAssets";
@@ -43,6 +44,7 @@ export const App: React.FC = () => {
   const [toastMsg, setToastMsg] = useState<string>("");
   const [toastVisible, setToastVisible] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
+  const [fidgetOpen, setFidgetOpen] = useState<boolean>(false);
   const [audioPlaying, setAudioPlaying] = useState<boolean>(false);
   const [audioTime, setAudioTime] = useState<number>(0);
   const [audioDuration, setAudioDuration] = useState<number>(0);
@@ -425,6 +427,17 @@ export const App: React.FC = () => {
               </svg>
             </button>
             </Tooltip>
+            <Tooltip label="Fidget agent (prompt & brief architect)">
+            <button
+              id="fidget-toggle"
+              className="craft-dock-btn craft-fidget"
+              onClick={() => setFidgetOpen((v) => !v)}
+              aria-label="Fidget agent"
+              aria-expanded={fidgetOpen}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><circle cx="8" cy="8" r="3.2" /><circle cx="16" cy="8" r="3.2" /><path d="M5 20c1.2-3 3.8-5 7-5s5.8 2 7 5" /></svg>
+            </button>
+            </Tooltip>
             <Tooltip label="Open Scribbles (Google Flow Moppet Maker & auto-ingest downloads)">
             <button
               id="scribbles-toggle"
@@ -441,6 +454,7 @@ export const App: React.FC = () => {
               />
             </button>
             </Tooltip>
+            <FidgetPanel open={fidgetOpen} onClose={() => setFidgetOpen(false)} onToast={showToast} />
           </div>
         </div>
       </header>
