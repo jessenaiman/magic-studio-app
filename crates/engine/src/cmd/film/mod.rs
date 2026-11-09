@@ -3,6 +3,8 @@
 //! timeline in FilmCraft for hand edits. All time is measured in [`Tick`] (`254_016_000_000` ticks/s).
 
 pub mod assembly;
+pub mod markers;
+pub use markers::cmd_video_markers;
 
 use std::path::{Path, PathBuf};
 
@@ -492,6 +494,7 @@ fn track_rows(tracks: &Value, kind: &str, media: &Value) -> Vec<Value> {
                         "source_out_tick": raw_tick(&c["sourceOut"]),
                         "source_path": source.and_then(|source| source["path"].as_str()),
                         "source_status": source.and_then(|source| source["status"].as_str()),
+                        "label": c.get("label").cloned().unwrap_or(Value::Null),
                         "enabled": c.get("enabled").cloned().unwrap_or(json!(true)),
                     })
                 })
@@ -522,6 +525,7 @@ pub fn cmd_video_timeline(s: &mut Session, _: &Value) -> Result<Value> {
     tracks.extend(video);
     tracks.extend(track_rows(&seq["audio"], "audio", &media));
     let duration_tick = parse_raw_tick(&seq["duration"]).map(|t| t.0);
+    let synced_markers = markers::extract_synced_markers(&f.dir, Some(&seq));
     Ok(json!({
         "ok": true,
         "timeline": f.project,
@@ -529,6 +533,7 @@ pub fn cmd_video_timeline(s: &mut Session, _: &Value) -> Result<Value> {
         "duration_tick": duration_tick,
         "duration": duration_tick,
         "tracks": tracks,
+        "markers": synced_markers,
     }))
 }
 

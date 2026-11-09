@@ -27,13 +27,14 @@ pub enum CraftTarget {
     Effect,
     Vector,
     Design,
+    Ani,
     Texture,
 }
 
 impl CraftTarget {
     /// Every Craft app Magic drives.
-    pub const ALL: [CraftTarget; 6] =
-        [CraftTarget::Film, CraftTarget::Photo, CraftTarget::Effect, CraftTarget::Vector, CraftTarget::Design, CraftTarget::Texture];
+    pub const ALL: [CraftTarget; 7] =
+        [CraftTarget::Film, CraftTarget::Photo, CraftTarget::Effect, CraftTarget::Vector, CraftTarget::Design, CraftTarget::Ani, CraftTarget::Texture];
 
     /// The canonical application name (e.g. `filmcraft`).
     pub fn name(&self) -> &'static str {
@@ -43,6 +44,7 @@ impl CraftTarget {
             Self::Effect => "effectcraft",
             Self::Vector => "vectorcraft",
             Self::Design => "designcraft",
+            Self::Ani => "anicraft",
             Self::Texture => "texturecraft",
         }
     }
@@ -55,6 +57,7 @@ impl CraftTarget {
             Self::Effect => "effectcraft-cli",
             Self::Vector => "vectorcraft-cli",
             Self::Design => "designcraft-cli",
+            Self::Ani => "anicraft-cli",
             Self::Texture => "texturecraft-cli",
         }
     }
@@ -67,6 +70,7 @@ impl CraftTarget {
             Self::Effect => 9878,
             Self::Photo => 9879,
             Self::Vector => 9880,
+            Self::Ani => 9881,
             Self::Texture => 9882,
         }
     }
@@ -79,6 +83,7 @@ impl CraftTarget {
             Self::Effect => "EFFECTCRAFT_CONTROL_PORT",
             Self::Photo => "PHOTOCRAFT_CONTROL_PORT",
             Self::Vector => "VECTORCRAFT_CONTROL_PORT",
+            Self::Ani => "ANICRAFT_CONTROL_PORT",
             Self::Texture => "TEXTURECRAFT_CONTROL_PORT",
         }
     }
@@ -424,6 +429,12 @@ impl CraftHub {
         Some(result.map_err(|error| EngineError::CommandFailed(command.to_string(), error)))
     }
 
+    /// Run a batch of EffectCraft steps directly against the live window (if open on `project`) or
+    /// the in-process `effectcraft_engine::Session`.
+    pub(crate) fn run_effect_steps(project: Option<&Path>, save: bool, steps: &[(String, Value)]) -> Result<Vec<Value>> {
+        run_effect_steps(project, save, steps)
+    }
+
     /// Run a batch of FilmCraft steps directly against the live window (if open on `project`) or the
     /// in-process `filmcraft_engine::Session` with `filmcraft_gpu::ExportRenderer` registered.
     pub(crate) fn run_film_steps(project: Option<&Path>, fresh: bool, save: bool, steps: &[Value]) -> Result<Vec<Value>> {
@@ -746,6 +757,10 @@ impl ControlConn {
                 let info = self.send_raw("session.inspect", json!({}))?;
                 Ok(info["path"].as_str().is_some_and(|p| same_canonical_path(Path::new(p), expected)))
             }
+            CraftTarget::Ani => {
+                let info = self.execute_engine("doc.info", &json!({}))?;
+                Ok(info["path"].as_str().is_some_and(|p| same_canonical_path(Path::new(p), expected)))
+            }
         }
     }
 
@@ -754,8 +769,8 @@ impl ControlConn {
             CraftTarget::Film | CraftTarget::Design | CraftTarget::Vector => {
                 let _ = self.execute_engine("file.save", &json!({}))?;
             }
-            CraftTarget::Effect | CraftTarget::Texture => {
-                let _ = self.execute_engine("file.save", &json!({"path": doc}))?;
+            CraftTarget::Effect | CraftTarget::Texture | CraftTarget::Ani => {
+                let _ = self.execute_engine("file.save", &json!({"path": doc, "confirm": true}))?;
             }
             CraftTarget::Photo => {
                 let _ = self.execute_engine("app.save", &json!({}))?;
@@ -967,6 +982,18 @@ fn call_cli_with_save(target: CraftTarget, doc: Option<&Path>, command: &str, pa
                 if save && let Some(path) = doc {
                     cmd.arg("-o").arg(path);
                 }
+            }
+        }
+        CraftTarget::Ani => {
+            cmd.arg("exec");
+            if let Some(path) = doc {
+                cmd.arg(path);
+            } else {
+                cmd.arg("--sample");
+            }
+            cmd.arg(command).arg(&params_str);
+            if save && let Some(path) = doc {
+                cmd.arg("--save").arg(path);
             }
         }
     }

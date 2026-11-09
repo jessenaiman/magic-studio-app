@@ -25,9 +25,7 @@ base64 = "0.23"
 
 # Craft engines and shared Craft libraries called directly in-process
 anicraft-doc = { workspace = true }
-anicraft-engine = { workspace = true }
 anicraft-geom = { workspace = true }
-anicraft-render = { workspace = true }
 craft-ai-client = { workspace = true }
 craft-ai-core = { workspace = true }
 craft-ai-native = { workspace = true }

@@ -1318,7 +1318,16 @@ fn specs_film() -> Vec<CommandSpec> {
         cmd!("video.export", "Export the Film (FilmCraft)", ["Studio"], None, "{}", always, crate::cmd::film::cmd_video_export),
         query!("video.frame", "Render One Film Frame (FilmCraft)", "{\"seconds\":0}", crate::cmd::film::cmd_video_frame),
         query!("video.open", "Open the Film in FilmCraft", "{}", crate::cmd::film::cmd_video_open),
-        query!("video.timeline", "Film Tracks and Clips (FilmCraft)", "{}", crate::cmd::film::cmd_video_timeline),
+        query!("video.timeline", "Film Tracks, Clips and Synced Markers (FilmCraft + EffectCraft)", "{}", crate::cmd::film::cmd_video_timeline),
+        cmd!(
+            "video.markers",
+            "List, Add, Seed, Delete or Interchange Timeline Markers & Cue Points (FilmCraft ↔ EffectCraft)",
+            ["Studio"],
+            Some("M"),
+            "{\"action\":\"optional list|add|seed|delete|clear|interchange\",\"time\":\"optional seconds or ticks\",\"duration\":\"optional seconds or ticks\",\"name\":\"optional cue/marker name\",\"comment\":\"optional comment\",\"color\":\"optional Iris|Mango|Caribbean|Lavender|Forest\",\"kind\":\"optional flashCue|range|chapter\",\"format\":\"optional xml|fcpxml|otio|edl|aaf\",\"direction\":\"optional film_to_effect|effect_to_film\"}",
+            always,
+            crate::cmd::film::cmd_video_markers
+        ),
         cmd!(
             "video.place_clip",
             "Place a Clip on the Film (FilmCraft)",

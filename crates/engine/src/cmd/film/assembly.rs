@@ -31,12 +31,6 @@ fn arg(p: &Path) -> String {
 }
 
 pub(crate) fn run(_dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<Value>> {
-    let file = project.with_extension("steps.jsonl");
-    let mut body: String = steps.iter().map(|s| format!("{s}\n")).collect();
-    if !fresh && let Ok(earlier) = std::fs::read_to_string(&file) {
-        body = earlier + &body;
-    }
-    crate::doc_state::write_file(&file, &body)?;
     crate::cmd::film::run(project, fresh, steps)
 }
 
@@ -302,8 +296,39 @@ fn build_film(dir: &Path, project: &Path, film: &Inputs, fps: FrameRate) -> Resu
 
     let placed = run(dir, project, false, &place)?;
     let nb = film.backgrounds.len();
+    let nc = film.characters.len();
+    let audio_clips: Vec<u64> = placed.first().map(|r| ids(r, "clips")).unwrap_or_default();
     let bg_clips: Vec<u64> = placed[1..=nb].iter().flat_map(|r| ids(r, "clips")).collect();
-    let mut post_steps = vec![json!({"id": "clip.fillFrame", "params": {"clips": bg_clips}})];
+    let char_clips: Vec<u64> = placed[(1 + nb)..=(nb + nc)].iter().flat_map(|r| ids(r, "clips")).collect();
+    let lyr_clips: Vec<u64> = placed[(1 + nb + nc)..].iter().flat_map(|r| ids(r, "clips")).collect();
+    let mut post_steps = vec![json!({"id": "clip.fillFrame", "params": {"clips": bg_clips.clone()}})];
+    if !audio_clips.is_empty() {
+        post_steps.push(json!({"id": "edit.label.caribbean", "params": {"clips": audio_clips}}));
+    }
+    if !bg_clips.is_empty() {
+        post_steps.push(json!({"id": "edit.label.lavender", "params": {"clips": bg_clips}}));
+    }
+    if !char_clips.is_empty() {
+        post_steps.push(json!({"id": "edit.label.mango", "params": {"clips": char_clips}}));
+    }
+    if !lyr_clips.is_empty() {
+        post_steps.push(json!({"id": "edit.label.iris", "params": {"clips": lyr_clips}}));
+    }
+
+    for (idx, (bg, (from, default_len))) in film.backgrounds.iter().zip(spans(&times, film.duration)).enumerate() {
+        let length = bg.to.map(|to| (to - from).max(Tick::ZERO)).unwrap_or(default_len);
+        let label = bg.name.clone().unwrap_or_else(|| format!("Scene {}", idx + 1));
+        post_steps.push(json!({
+            "id": "markers.addRange",
+            "params": {
+                "time": from.0,
+                "duration": length.0,
+                "name": format!("scene_{}", idx + 1),
+                "comment": label,
+                "color": "Lavender",
+            }
+        }));
+    }
 
     for (res, custom_name) in placed.iter().zip(names_for_placements.iter()) {
         if let Some(name) = custom_name

@@ -17,9 +17,7 @@ magic-mcp = { path = "crates/mcp" }
 
 # Craft engines and domain crates (`storytold/*`, version-independent git tracking for `cargo update`)
 anicraft-doc = { git = "https://github.com/storytold/anicraft" }
-anicraft-engine = { git = "https://github.com/storytold/anicraft" }
 anicraft-geom = { git = "https://github.com/storytold/anicraft" }
-anicraft-render = { git = "https://github.com/storytold/anicraft" }
 effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
 effectcraft-ui-egui = { git = "https://github.com/storytold/effectcraft" }
 filmcraft-codecs = { git = "https://github.com/storytold/filmcraft" }
@@ -102,14 +100,7 @@ egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc7996
 egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_glow = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_extras = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_system_font_provider = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
-krilla = { git = "https://github.com/storytold/craft-libs" }
-hayro = { git = "https://github.com/storytold/craft-libs" }
-hayro-interpret = { git = "https://github.com/storytold/craft-libs" }
 hayro-syntax = { git = "https://github.com/storytold/craft-libs" }
 hayro-jbig2 = { git = "https://github.com/storytold/craft-libs" }

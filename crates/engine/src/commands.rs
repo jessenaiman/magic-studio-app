@@ -92,6 +92,12 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         "words.workspace" => params.get("path").is_none_or(Value::is_null),
         "skills.limits" => params.get("max_words").is_none_or(Value::is_null) && params.get("max_steps").is_none_or(Value::is_null),
         "skills.diagram" => params.get("render").and_then(Value::as_bool) != Some(true),
+        "video.markers" => {
+            let has_time_or_name =
+                params.get("time").is_some() || params.get("seconds").is_some() || params.get("tick").is_some() || params.get("name").is_some();
+            let action = params["action"].as_str().unwrap_or(if has_time_or_name { "add" } else { "list" });
+            action == "list"
+        }
         "agent.log" => params.get("refresh").and_then(Value::as_bool) != Some(true),
         "app.doctor" => true,
         _ => false,

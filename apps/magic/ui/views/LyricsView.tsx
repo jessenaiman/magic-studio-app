@@ -94,6 +94,29 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   const [brushWidth, setBrushWidth] = useState<number>(8);
   const [playheadSec, setPlayheadSec] = useState<number>(0.8);
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
+  const [timelineMarkers, setTimelineMarkers] = useState<
+    {
+      id?: number | null;
+      ec_index?: number;
+      index: number;
+      name: string;
+      comment: string;
+      kind: string;
+      color: string;
+      time_sec: number;
+      duration_sec: number;
+      source: string;
+    }[]
+  >([]);
+  const [sceneTrackClips, setSceneTrackClips] = useState<
+    {
+      clip: number;
+      name: string;
+      start_sec: number;
+      end_sec: number;
+      label?: string;
+    }[]
+  >([]);
 
   // Local draft map keyed by `${animId}::${lineId}`
   const [draftDesigns, setDraftDesigns] = useState<Record<string, LineDesign>>({});
@@ -159,8 +182,54 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
     }
   }, [onToast, projectPath]);
 
+  const refreshSyncedTimeline = useCallback(() => {
+    executeCommand("video.timeline", {})
+      .then((res) => {
+        const r = res as {
+          markers?: typeof timelineMarkers;
+          tracks?: {
+            role?: string;
+            label?: string;
+            clips?: {
+              clip: number;
+              name?: string;
+              start_tick?: number;
+              end_tick?: number;
+              label?: string;
+            }[];
+          }[];
+        };
+        if (Array.isArray(r.markers)) {
+          setTimelineMarkers(r.markers);
+        }
+        const bgTrack = (r.tracks ?? []).find(
+          (t) => t.role === "background" || t.label === "V1",
+        );
+        if (bgTrack && Array.isArray(bgTrack.clips)) {
+          setSceneTrackClips(
+            bgTrack.clips.map((c, idx) => ({
+              clip: c.clip ?? idx,
+              name: c.name || `Scene ${idx + 1}`,
+              start_sec: (c.start_tick ?? 0) / 254016000000,
+              end_sec: (c.end_tick ?? 0) / 254016000000,
+              label: c.label,
+            })),
+          );
+        }
+      })
+      .catch(() => {
+        executeCommand("video.markers", { action: "list" })
+          .then((res) => {
+            const r = res as { markers?: typeof timelineMarkers };
+            if (Array.isArray(r.markers)) setTimelineMarkers(r.markers);
+          })
+          .catch(() => {});
+      });
+  }, []);
+
   useEffect(() => {
     void loadWords();
+    refreshSyncedTimeline();
     executeCommand("song.waveform", { bins: 180 })
       .then((res) => {
         const peaks = (res as { peaks?: number[] })?.peaks;
@@ -169,7 +238,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
         }
       })
       .catch(() => {});
-  }, [loadWords]);
+  }, [loadWords, refreshSyncedTimeline]);
 
   // Flatten all lyric lines across sections
   const allLineGroups = useMemo<LyricLineGroup[]>(() => {
@@ -1152,6 +1221,61 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
             <span id="words-time" className="lyrics-time-readout">
               {formatTime(playheadSec)} / {formatTime(totalSongDuration)}
             </span>
+            <button
+              id="words-add-marker"
+              type="button"
+              className="ghost"
+              title="Add synced Cue/Range Marker at playhead in FilmCraft (.fcproj) and EffectCraft (lyrics.ecproj)"
+              onClick={() => {
+                const cueName = activeLine
+                  ? `${activeLine.sectionName} · ${activeLine.lineId}`
+                  : `cue_${formatTime(playheadSec)}`;
+                const cueComment = activeLine?.text || cueName;
+                void executeCommand("video.markers", {
+                  action: "add",
+                  seconds: playheadSec,
+                  name: cueName,
+                  comment: cueComment,
+                  color: "Iris",
+                  kind: "flashCue",
+                })
+                  .then((res) => {
+                    const r = res as { markers?: typeof timelineMarkers };
+                    if (Array.isArray(r.markers)) setTimelineMarkers(r.markers);
+                    onToast(
+                      `Added marker "${cueName}" at ${formatTime(playheadSec)} in FilmCraft & EffectCraft`,
+                    );
+                  })
+                  .catch((err) => onToast(String(err)));
+              }}
+            >
+              ◆ + Marker (M)
+            </button>
+            <button
+              id="words-seed-markers"
+              type="button"
+              className="ghost"
+              title="Seed section Range Markers & line Flash Cues across FilmCraft (.fcproj) and EffectCraft (lyrics.ecproj)"
+              onClick={() => {
+                void executeCommand("video.markers", {
+                  action: "seed",
+                })
+                  .then((res) => {
+                    const r = res as {
+                      seeded_sections?: number;
+                      seeded_lines?: number;
+                      markers?: typeof timelineMarkers;
+                    };
+                    if (Array.isArray(r.markers)) setTimelineMarkers(r.markers);
+                    onToast(
+                      `Synced ${r.seeded_sections ?? 0} section range markers & ${r.seeded_lines ?? 0} line cues (FilmCraft ↔ EffectCraft)`,
+                    );
+                  })
+                  .catch((err) => onToast(String(err)));
+              }}
+            >
+              ⇄ Sync Cues ({timelineMarkers.length})
+            </button>
             <div className="lyrics-bg-mode-toggle">
               <button
                 id="words-bg-scene"
@@ -1189,9 +1313,97 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
             </button>
           </div>
 
-          {/* Bottom Multi-Lane Timeline with FilmCraft Audio Waveform */}
+          {/* Bottom Multi-Lane Timeline with Cues/Markers Ruler, Grouped Tracks & FilmCraft Audio Waveform */}
           <section id="authoring-timeline" className="lyrics-timeline-dock">
             <div className="lyrics-timeline-tracks">
+              {/* Cues / Markers Ruler Lane (Synced FilmCraft + EffectCraft) */}
+              <div className="lyrics-timeline-row markers-row">
+                <span className="lane-label">Cues</span>
+                <div
+                  className="lane-track"
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const pct = Math.max(
+                      0,
+                      Math.min(1, (e.clientX - r.left) / Math.max(1, r.width)),
+                    );
+                    setPlayheadSec(pct * totalSongDuration);
+                  }}
+                >
+                  {timelineMarkers.map((mk, i) => {
+                    const left = Math.max(
+                      0,
+                      Math.min(98.5, (mk.time_sec / totalSongDuration) * 100),
+                    );
+                    const width =
+                      mk.duration_sec > 0
+                        ? Math.max(
+                            1.5,
+                            Math.min(
+                              100 - left,
+                              (mk.duration_sec / totalSongDuration) * 100,
+                            ),
+                          )
+                        : undefined;
+                    const colorClass = (mk.color || "Iris").toLowerCase();
+                    return (
+                      <button
+                        key={`mk-${mk.id ?? i}-${mk.time_sec}`}
+                        type="button"
+                        className={`timeline-marker-pin color-${colorClass} ${
+                          width ? "is-range" : "is-cue"
+                        }`}
+                        style={{
+                          left: `${left}%`,
+                          width: width ? `${width}%` : undefined,
+                        }}
+                        title={`[${mk.source}] ${mk.name}: ${mk.comment} (${formatTime(mk.time_sec)})`}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          setPlayheadSec(mk.time_sec);
+                        }}
+                      >
+                        {width ? `◆ ${mk.name || mk.comment}` : "◆"}
+                      </button>
+                    );
+                  })}
+                  <div
+                    className="timeline-playhead"
+                    style={{
+                      left: `${Math.min(100, (playheadSec / totalSongDuration) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Scene / V1 Grouped Track Lane */}
+              {sceneTrackClips.length > 0 && (
+                <div className="lyrics-timeline-row">
+                  <span className="lane-label">Scenes</span>
+                  <div className="lane-track">
+                    {sceneTrackClips.map((sc) => {
+                      const left = (sc.start_sec / totalSongDuration) * 100;
+                      const width = Math.max(
+                        1.5,
+                        ((sc.end_sec - sc.start_sec) / totalSongDuration) * 100,
+                      );
+                      return (
+                        <button
+                          key={`sc-${sc.clip}`}
+                          type="button"
+                          className="timeline-scene-pill"
+                          style={{ left: `${left}%`, width: `${width}%` }}
+                          title={`${sc.name} (${formatTime(sc.start_sec)} – ${formatTime(sc.end_sec)})`}
+                          onClick={() => setPlayheadSec(sc.start_sec)}
+                        >
+                          {sc.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Waveform Lane */}
               <div className="lyrics-timeline-row waveform-row">
                 <span className="lane-label">Audio</span>

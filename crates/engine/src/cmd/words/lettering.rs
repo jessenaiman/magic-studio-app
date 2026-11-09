@@ -529,6 +529,21 @@ fn build_steps_with_designs(recipe: &Value, designs: &Value, all: &[Line], durat
             }
             h_val
         };
+        steps.push(step(
+            "markers.set",
+            json!({
+                "new": true,
+                "time": shown.seconds(),
+                "duration": (gone - shown).seconds(),
+                "comment": line.text(),
+                "label": "Blue",
+                "cuePoint": {
+                    "name": line.layer,
+                    "navigation": true,
+                    "params": [["id", id]]
+                }
+            }),
+        ));
         summary.push(json!({
             "id": id,
             "text": line.text(),

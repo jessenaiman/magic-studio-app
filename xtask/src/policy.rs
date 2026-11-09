@@ -1,21 +1,43 @@
-//! Layer and asset gates: Magic's crate layers from docs/architecture.md › Layers, and asset
-//! attribution sidecars.
+//! Layer and UI-boundary gates: Magic's crate layers from `docs/architecture.md › Layers`.
 use crate::Result;
 use serde_json::Value;
 use std::process::Command;
 
-/// Magic's own crates and their layers (docs/architecture.md › Layers).
-const LAYERS: &[(&str, u8)] =
-    &[("craft-atomic", 0), ("craft-scribbles", 4), ("magic-engine", 5), ("magic-mcp", 6), ("magic", 7), ("magic-cli", 7), ("magic-tui", 7), ("xtask", 7)];
+/// Magic's own workspace crates and their layers (`docs/architecture.md › Layers`).
+const LAYERS: &[(&str, u8)] = &[("craft-scribbles", 4), ("magic-engine", 5), ("magic-mcp", 6), ("magic", 7), ("magic-cli", 7), ("magic-tui", 7), ("xtask", 7)];
 
-/// Craft backends (L0–L4): maintained dependencies Magic drives, never edited here.
+/// UI / windowing crates (L6): allowed only in L7 shells (`magic`), never in headless L0–L5 crates
+/// (`craft-scribbles`, `magic-engine`).
+const UI_CRATES: &[&str] = &[
+    "anicraft-ui-egui",
+    "designcraft-ui-egui",
+    "effectcraft-ui-egui",
+    "filmcraft-ui-egui",
+    "photocraft-ui-egui",
+    "vectorcraft-ui-egui",
+    "texturecraft-ui-egui",
+    "craft-ui",
+    "craft-dialogs",
+    "craft-keymap",
+    "egui",
+    "eframe",
+    "winit",
+    "rfd",
+    "tauri",
+    "webkit2gtk",
+];
+
+/// Headless Craft backends and shared libraries (L0–L3): maintained dependencies Magic drives.
 const CRAFT_PREFIXES: &[&str] = &["anicraft-", "designcraft-", "effectcraft-", "filmcraft-", "photocraft-", "vectorcraft-", "texturecraft-", "craft-"];
 
 fn layer_of(name: &str) -> Option<u8> {
     if let Some((_, l)) = LAYERS.iter().find(|(n, _)| *n == name) {
         return Some(*l);
     }
-    CRAFT_PREFIXES.iter().any(|p| name.starts_with(p)).then_some(4)
+    if UI_CRATES.contains(&name) || name.ends_with("-ui-egui") || name.starts_with("tauri-") {
+        return Some(6);
+    }
+    CRAFT_PREFIXES.iter().any(|p| name.starts_with(p)).then_some(3)
 }
 
 pub(crate) fn metadata() -> Result<Value> {
