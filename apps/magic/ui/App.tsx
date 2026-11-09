@@ -262,25 +262,6 @@ export const App: React.FC = () => {
                 </svg>
                 <span id="project-name">{projectName}</span>
               </button>
-              <Tooltip label={assetsPinned ? "Asset Drawer pinned open across views" : assetsOpen ? "Hide horizontal Asset Drawer" : "Open horizontal Asset Drawer (can be pinned)"}>
-                <button
-                  id="app-assets-drawer-btn"
-                  type="button"
-                  className={`top-assets-pill ${assetsOpen || assetsPinned ? "active" : ""}`}
-                  aria-expanded={assetsOpen || assetsPinned}
-                  onClick={() => {
-                    if (assetsPinned) {
-                      setAssetsPinned(false);
-                      setAssetsOpen(false);
-                    } else {
-                      setAssetsOpen((v) => !v);
-                    }
-                  }}
-                >
-                  <span>Assets ({Math.max((data?.characters?.length ?? 0) + (data?.assets?.assets?.filter((a) => a.role === "background").length ?? 0), data?.assets?.assets?.length ?? 0)})</span>
-                  <span className="chev">{assetsPinned ? "📌" : assetsOpen ? "▴" : "▾"}</span>
-                </button>
-              </Tooltip>
             </>
           ) : (
             <span id="project-name" className="muted app-project-name" >

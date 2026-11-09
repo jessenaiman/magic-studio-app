@@ -299,7 +299,10 @@ body.animation-mode :is(#tab-project, #tab-storyboard, #tab-design, #tab-studio,
   flex-direction: column;
   z-index: 12;
 }
-.app-assets-drawer[hidden] {
+.app-assets-drawer.collapsed .app-assets-bar {
+  border-bottom: none;
+}
+.app-assets-shelf[hidden] {
   display: none !important;
 }
 .app-assets-bar {
@@ -308,7 +311,14 @@ body.animation-mode :is(#tab-project, #tab-storyboard, #tab-design, #tab-studio,
   gap: 8px;
   padding: 5px 14px;
   border-bottom: 1px solid #1c2430;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.app-assets-pin {
+  padding: 3px 7px;
+  font-size: 12px;
+  line-height: 1;
 }
 .app-assets-toggle {
   display: inline-flex;
@@ -333,8 +343,10 @@ body.animation-mode :is(#tab-project, #tab-storyboard, #tab-design, #tab-studio,
   margin-left: 4px;
 }
 .app-assets-active-char select {
+  width: auto;
+  max-width: 150px;
   height: 26px;
-  padding: 0 8px;
+  padding: 0 24px 0 8px;
   font-size: 12px;
   border-radius: 6px;
   background: #161c26;

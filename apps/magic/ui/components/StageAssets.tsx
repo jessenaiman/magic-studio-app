@@ -121,16 +121,20 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
   const { characterCards, backgroundCards } = useMemo(() => {
     const chars: UnifiedCard[] = [];
     const seenCharIds = new Set<string>();
+    const seenAssetIds = new Set<string>();
 
     for (const c of rawCharacters) {
       const cid = c.id;
       seenCharIds.add(cid);
       const matchingAsset = rawAssets.find(
-        (a) => a.character === cid || a.id === cid || a.id.replace(/[^a-zA-Z0-9]+/g, "_") === cid
+        (a) => a.id === cid || a.id.replace(/[^a-zA-Z0-9]+/g, "_") === cid || a.character === cid
       );
+      if (matchingAsset) {
+        seenAssetIds.add(matchingAsset.id);
+      }
       const { label, ready } = getCharacterBadge(c);
       chars.push({
-        id: cid,
+        id: matchingAsset?.id || cid,
         charId: cid,
         assetId: matchingAsset?.id,
         name: c.name || cid,
@@ -156,22 +160,21 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
           isReady: true,
           path: asset.path,
         });
-      } else {
+      } else if (!seenAssetIds.has(asset.id)) {
         const normId = (asset.character || asset.id).replace(/[^a-zA-Z0-9]+/g, "_");
-        if (!seenCharIds.has(normId)) {
-          seenCharIds.add(normId);
-          chars.push({
-            id: asset.id,
-            charId: normId,
-            assetId: asset.id,
-            name: asset.name || asset.id,
-            badge: asset.kind === "model_3d" ? "3D Rig · Animate →" : "Cutout · Animate →",
-            thumb: isImg ? asset.path! : null,
-            role: "character",
-            isReady: asset.kind === "model_3d",
-            path: asset.path,
-          });
-        }
+        seenCharIds.add(normId);
+        seenAssetIds.add(asset.id);
+        chars.push({
+          id: asset.id,
+          charId: normId,
+          assetId: asset.id,
+          name: asset.name || asset.id,
+          badge: asset.kind === "model_3d" ? "3D Rig · Animate →" : "Cutout · Animate →",
+          thumb: isImg ? asset.path! : null,
+          role: "character",
+          isReady: asset.kind === "model_3d",
+          path: asset.path,
+        });
       }
     }
 
@@ -262,15 +265,12 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
     }, 60);
   };
 
-  const idPrefix = view === "storyboard" ? "app-stage" : "stage";
-
   return (
     <section
-      id={`${idPrefix}-assets-panel`}
+      id="stage-assets-panel"
       className={`app-assets-drawer ${open ? "open" : "collapsed"}`}
-      hidden={!open}
       data-ui-config="motion-asset-browser"
-      aria-label="Project Assets Drawer"
+      aria-label="Stage Assets & Animate"
     >
       <div id="motion-asset-browser" className="app-assets-bar">
         <button
@@ -279,9 +279,9 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
           className="ghost app-assets-toggle"
           aria-expanded={open}
           onClick={onToggleOpen}
-          title="Hide horizontal asset drawer"
+          title={open ? "Collapse horizontal asset drawer" : "Expand horizontal asset drawer"}
         >
-          <span className="chev">▴</span>
+          <span className="chev">{open ? "▴" : "▾"}</span>
           <strong>Assets</strong>
           <span id="motion-assets-meta" className="muted">
             ({totalCount})
@@ -291,34 +291,41 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
         <button
           id="stage-assets-pin"
           type="button"
-          className={pinned ? "start" : "ghost"}
+          className={`${pinned ? "start" : "ghost"} app-assets-pin`}
           aria-pressed={pinned}
+          aria-label={pinned ? "Unpin Asset Drawer" : "Pin Asset Drawer open"}
           onClick={onTogglePin}
-          title={pinned ? "Unpin Asset Drawer (hide when switching views)" : "Pin Asset Drawer open across all views"}
+          title={pinned ? "Unpin Asset Drawer (collapse when switching views)" : "Pin Asset Drawer open across all views"}
         >
-          {pinned ? "📌 Pinned" : "📌 Pin open"}
+          📌
         </button>
 
         <div className="app-assets-tabs" role="tablist" aria-label="Asset categories">
           <button
-            id={`${idPrefix}-tab-characters`}
+            id="stage-tab-characters"
             type="button"
             className={tab === "characters" ? "start" : "ghost"}
-            onClick={() => setTab("characters")}
+            onClick={() => {
+              setTab("characters");
+              if (!open) onToggleOpen();
+            }}
           >
             Characters / Rig ({characterCards.length})
           </button>
           <button
-            id={`${idPrefix}-tab-plates`}
+            id="stage-tab-plates"
             type="button"
             className={tab === "backgrounds" ? "start" : "ghost"}
-            onClick={() => setTab("backgrounds")}
+            onClick={() => {
+              setTab("backgrounds");
+              if (!open) onToggleOpen();
+            }}
           >
             Backgrounds ({backgroundCards.length})
           </button>
         </div>
 
-        {characterCards.length > 0 && (
+        {open && characterCards.length > 0 && (
           <div className="app-assets-active-char">
             <span
               id="motion-status-dot"
@@ -341,17 +348,19 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
         )}
 
         <div className="app-assets-actions">
+          {open && (
+            <button
+              id="motion-rebuild-rig"
+              type="button"
+              className="ghost"
+              title="Mark parts, cut layers, or rebuild rig"
+              onClick={handlePrepareArtwork}
+            >
+              ✂ Prepare artwork…
+            </button>
+          )}
           <button
-            id="motion-rebuild-rig"
-            type="button"
-            className="ghost"
-            title="Mark parts, cut layers, or rebuild rig"
-            onClick={handlePrepareArtwork}
-          >
-            ✂ Prepare artwork…
-          </button>
-          <button
-            id={`${idPrefix}-add-asset`}
+            id="stage-add-asset"
             type="button"
             className="start"
             disabled={busy}
@@ -359,31 +368,10 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
           >
             + Add Asset
           </button>
-          {/* Preserved alias IDs for CLI --bridge automation */}
-          <button
-            id="motion-import-asset"
-            type="button"
-            className="icon"
-            title="Import character or artwork"
-            aria-label="Import character or artwork"
-            disabled={busy}
-            onClick={handleAddAsset}
-            style={{ display: "none" }}
-          />
-          <button
-            id="motion-remove-asset"
-            type="button"
-            className="icon"
-            title="Remove active asset from project"
-            aria-label="Remove asset from project"
-            disabled={busy || !activeCard}
-            onClick={() => activeCard && handleRemoveCard(activeCard)}
-            style={{ display: "none" }}
-          />
         </div>
       </div>
 
-      <div id="motion-assets" className="app-assets-shelf">
+      <div id="motion-assets" className="app-assets-shelf" hidden={!open}>
         <div id="magic-assets-list" className="app-assets-row">
           {visible.map((card) => {
             const isSelected =
@@ -392,13 +380,14 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
             return (
               <div
                 key={card.id}
-                id={card.role === "character" ? `char-select-${card.charId || card.id}` : `bg-select-${card.id}`}
+                id={`stage-asset-${card.id}`}
                 className={`app-asset-card ${isSelected ? "active" : ""}`}
                 role="button"
                 tabIndex={0}
                 title={`${card.name} · ${card.badge}`}
                 onClick={() => {
                   if (card.role === "character") {
+                    void executeCommand("character.open", { id: card.assetId || card.charId || card.id }).catch(() => {});
                     onSelectCharacter(card.charId || card.id, true);
                   } else {
                     onNavigate("storyboard");
@@ -408,6 +397,7 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     if (card.role === "character") {
+                      void executeCommand("character.open", { id: card.assetId || card.charId || card.id }).catch(() => {});
                       onSelectCharacter(card.charId || card.id, true);
                     } else {
                       onNavigate("storyboard");

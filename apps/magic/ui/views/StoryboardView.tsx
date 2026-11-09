@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { executeCommand, fileUrl, pickFile, ProjectAsset, StoryboardData, StoryboardPage, StoryboardSlot } from "../api";
+import React, { useEffect, useRef, useState } from "react";
+import { executeCommand, fileUrl, StoryboardData, StoryboardPage, StoryboardSlot } from "../api";
 import "../storyboard.css";
 
 interface Props {
@@ -9,87 +8,6 @@ interface Props {
   onRefresh: () => Promise<void>;
   onToast: (message: string) => void;
 }
-
-const StageAssets: React.FC<{ onToast: (message: string) => void }> = ({ onToast }) => {
-  const [assets, setAssets] = useState<ProjectAsset[]>([]);
-  const [tab, setTab] = useState<"characters" | "backgrounds">("characters");
-  const load = useCallback(async () => {
-    try {
-      const snapshot = await invoke<{ data?: { assets?: { assets?: ProjectAsset[] } } }>("session_snapshot");
-      setAssets(snapshot.data?.assets?.assets ?? []);
-    } catch (cause) {
-      onToast(String(cause));
-    }
-  }, [onToast]);
-  useEffect(() => {
-    void load();
-  }, [load]);
-  const backgrounds = assets.filter((asset) => asset.role === "background");
-  const characters = assets.filter((asset) => asset.role !== "background");
-  const visible = tab === "backgrounds" ? backgrounds : characters;
-  const subtitle = (asset: ProjectAsset) =>
-    asset.role === "background" ? "Background · Storyboard →" : asset.kind === "model_3d" ? "3D Rig · Animate →" : "Cutout · Animate →";
-  const run = async (fn: () => Promise<unknown>, refresh = false) => {
-    try {
-      await fn();
-      if (refresh) await load();
-    } catch (cause) {
-      onToast(String(cause));
-    }
-  };
-  return (
-    <section id="stage-assets-panel" className="sb-stage" aria-label="Stage Assets & Animate">
-      <div className="sb-stage-bar">
-        <strong>Stage Assets &amp; Animate <span className="muted">({assets.length})</span></strong>
-        <button id="stage-tab-characters" className={tab === "characters" ? "start" : "ghost"} onClick={() => setTab("characters")}>Characters / Animate ({characters.length})</button>
-        <button id="stage-tab-plates" className={tab === "backgrounds" ? "start" : "ghost"} onClick={() => setTab("backgrounds")}>Backgrounds ({backgrounds.length})</button>
-        <button id="stage-add-asset" className="ghost sb-stage-add" onClick={() => void run(async () => {
-          const selected = await pickFile({ title: "Add Asset", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg", "glb", "gltf"] });
-          if (typeof selected === "string" && selected) {
-            const name = (selected.split(/[/\\]/).pop() || selected).replace(/\.[^.]+$/, "");
-            const destination = tab === "backgrounds" ? { background: name } : { image: name };
-            const added = await executeCommand<{ asset_id: string }>("project.add_asset", { path: selected, name, ...destination, load: false });
-            onToast(`Added ${added.asset_id}`);
-          }
-        }, true)}>+ Add Asset</button>
-      </div>
-      <div className="sb-stage-row">
-        {visible.map((asset) => (
-          <div
-            key={asset.id}
-            className="sb-stage-card"
-            role="button"
-            tabIndex={0}
-            title={asset.name || asset.id}
-            onClick={() => void run(async () => {
-              await executeCommand("character.open", { id: asset.id });
-              await executeCommand("ui.set", { view: "animation" });
-            })}
-          >
-            <button
-              id={`stage-asset-remove-${asset.id}`}
-              className="ghost sb-stage-remove"
-              aria-label={`Remove ${asset.name || asset.id}`}
-              title={`Remove ${asset.name || asset.id} from project`}
-              onClick={(event) => {
-                event.stopPropagation();
-                void run(() => executeCommand("project.remove_asset", { id: asset.id }), true);
-              }}
-            >×</button>
-            {/\.(png|jpe?g|webp|gif|svg)$/i.test(asset.path || "")
-              ? <img className="sb-stage-thumb" src={fileUrl(asset.path)} alt="" />
-              : <div className="muted sb-stage-placeholder">{asset.kind === "model_3d" ? "3D RIG" : "PART"}</div>}
-            <div className="sb-stage-meta">
-              <div className="sb-stage-name">{asset.name || asset.id}</div>
-              <div className="muted sb-stage-sub">{subtitle(asset)}</div>
-            </div>
-          </div>
-        ))}
-        {!visible.length && <p className="muted">{tab === "backgrounds" ? "No backgrounds registered yet." : "No character cutouts registered yet."}</p>}
-      </div>
-    </section>
-  );
-};
 
 function StatusMark({ status }: { status: string }) {
   const glyph = status === "incomplete" ? "●" : status === "empty" ? "○" : "✓";
@@ -258,7 +176,6 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
 
   return (
     <div id="view-storyboard" className="storyboard-layout" data-document-dirty={Object.keys(drafts).length > 0} data-document-saving={busy === "Saving field…"}>
-      <StageAssets onToast={onToast} />
       <aside className="sb-panel sb-index">
         <header>
           <h2>Storyboard &amp; design index</h2>
