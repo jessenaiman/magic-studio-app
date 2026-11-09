@@ -14,9 +14,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Default Google Flow Moppet Maker Tool URL in the user's `Moppet Animation` project.
+/// Default Google Flow Moppet Maker Tool URL in the user's `Moppet Animation` project (for character animation: parts sheets, pose sheets, sprite cycles).
 pub const DEFAULT_MOPPET_MAKER_URL: &str =
     "https://flow.google.com/project/a16c9456-67b1-41f8-a995-79f4918d6737/tool/c4919fed-dcbe-498c-9839-2073ce1c8609?fromViewSource=tools";
+
+/// Default Google Flow Storyboard & Animation Master Pack Tool URL (for one-pass storyboard page & slot asset generation/recreation with ID name markers).
+pub const DEFAULT_STORYBOARD_PACK_TOOL_URL: &str =
+    "https://flow.google.com/project/a16c9456-67b1-41f8-a995-79f4918d6737/tool/191f61c7-21f6-434f-b679-4920807e2d62?fromViewSource=tools";
 
 /// Default Google Flow project URL (`Moppet Animation`).
 pub const DEFAULT_FLOW_PROJECT_URL: &str = "https://flow.google.com/project/a16c9456-67b1-41f8-a995-79f4918d6737";
@@ -1002,276 +1006,115 @@ pub fn reassemble_parts_sheet(parts_sheet_png: &Path, view_dir: &Path, char_id: 
     }))
 }
 
-/// Build an articulated 2.5D/3D Blender scene (`.blend` + `.glb` + `.anim.json`) with an `ARMATURE`
-/// (`plush-9` bones + `idle`, `walk_bounce`, and `jump` action keyframes) from the reassembled
-/// `parts.json` and layer PNGs, and optionally launch Blender interactively.
-pub fn build_blender_rig_from_parts(project_root: &Path, char_id: &str, view: &str, open_gui: bool) -> Result<Value> {
-    let char_dir = project_root.join("assets/characters").join(char_id);
-    let view_dir = char_dir.join(view);
-    let parts_json = view_dir.join("parts.json");
-    if !parts_json.is_file() {
-        return Err(ScribblesError::Invalid(format!("No parts.json found at {}; run scribbles.reassemble first", parts_json.display())));
+/// A single asset item in a Storyboard Master Pack (`storyboard-pack.json`), carrying its
+/// deterministic ID marker (`<ID>__<slot>`), target page/slot, prompt, references, and animation style.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct StoryboardPackItem {
+    pub id_marker: String,
+    pub code: String,
+    pub page: usize,
+    pub archetype: String,
+    pub slot: String,
+    pub kind: String,
+    pub title: String,
+    pub prompt: String,
+    pub animation_style: String,
+    pub references: Vec<String>,
+    pub existing_image: Option<String>,
+}
+
+/// Classify the kinetic/animation style from a page's `overall_design`, `purpose`, or `exact_prompt`.
+pub fn classify_animation_style(design: &str, prompt: &str) -> String {
+    let text = format!("{design} {prompt}").to_ascii_lowercase();
+    if text.contains("variable") || text.contains("breathe") || text.contains("300-900") {
+        "variable_font_breathe".into()
+    } else if text.contains("splittext") || text.contains("stagger") || text.contains("40ms") {
+        "split_text_stagger".into()
+    } else if text.contains("morphsvg") || text.contains("morph") {
+        "morph_svg".into()
+    } else if text.contains("falloff") || text.contains("forge dynamics") || text.contains("wave") {
+        "falloff_wave".into()
+    } else if text.contains("slit-scan") || text.contains("slit_scan") || text.contains("time warp") {
+        "slit_scan".into()
+    } else if text.contains("roughen") || text.contains("mask") || text.contains("paper-cut") {
+        "mask_roughen".into()
+    } else if text.contains("matter.js") || text.contains("repulsion") || text.contains("cursor") {
+        "matter_repulsion".into()
+    } else if text.contains("msdf") || text.contains("dissolve") || text.contains("webgpu") {
+        "shader_dissolve".into()
+    } else if text.contains("cylinder") || text.contains("rotatex") || text.contains("scroll") {
+        "scroll_cylinder".into()
+    } else if text.contains("griddler") || text.contains("procedural") || text.contains("ticker") {
+        "procedural_loop".into()
+    } else if text.contains("spreadsheet") || text.contains("cavalry") || text.contains("ripple") {
+        "spreadsheet_ripple".into()
+    } else if text.contains("ai empty") || text.contains("ai plate") || text.contains("text in post") {
+        "ai_plate_post".into()
+    } else if text.contains("parts") || text.contains("cutout") || text.contains("plush-9") {
+        "cutout_rig".into()
+    } else {
+        "storyboard_plate".into()
     }
-    let dir_3d = char_dir.join("3d");
-    fs::create_dir_all(&dir_3d)?;
-    let out_blend = dir_3d.join(format!("{char_id}-moppet-rig.blend"));
-    let out_glb = dir_3d.join(format!("{char_id}-moppet-rig.glb"));
-    let script_path = dir_3d.join("build_moppet_blender_rig.py");
+}
 
-    let py_script = r#"import bpy, json, math, os, sys
-from mathutils import Matrix, Vector
-
-argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-parts_json_path = argv[0]
-out_blend_path = argv[1]
-out_glb_path = argv[2] if len(argv) > 2 else ""
-
-with open(parts_json_path, "r") as f:
-    doc = json.load(f)
-
-w, h = doc.get("size", [1024, 1024])
-parts = doc.get("parts", [])
-view_dir = os.path.dirname(os.path.abspath(parts_json_path))
-
-bpy.ops.wm.read_factory_settings(use_empty=True)
-scene = bpy.context.scene
-scene.render.fps = 24
-scene.frame_start = 1
-scene.frame_end = 48
-
-# Create Collections
-col_rig = bpy.data.collections.new("COL_Rig")
-col_char = bpy.data.collections.new("COL_Character")
-scene.collection.children.link(col_rig)
-scene.collection.children.link(col_char)
-
-# Create Armature (plush-9 hierarchy)
-arm_data = bpy.data.armatures.new("MoppetArmature")
-arm_obj = bpy.data.objects.new("MoppetRig", arm_data)
-col_rig.objects.link(arm_obj)
-bpy.context.view_layer.objects.active = arm_obj
-bpy.ops.object.mode_set(mode='EDIT')
-
-bones = {}
-scale = 2.0 / float(max(w, h))
-
-for idx, p in enumerate(parts):
-    pid = p["id"]
-    jx, jy = p.get("joint", [w * 0.5, h * 0.5])
-    bx = (jx - w * 0.5) * scale
-    bz = (h * 0.5 - jy) * scale
-    bone = arm_data.edit_bones.new(pid)
-    bone.head = (bx, 0.0, bz)
-    bone.tail = (bx, 0.0, bz + 0.16)
-    bones[pid] = bone
-
-for p in parts:
-    pid = p["id"]
-    parent_id = p.get("parent")
-    if parent_id and parent_id in bones:
-        bones[pid].parent = bones[parent_id]
-
-bpy.ops.object.mode_set(mode='OBJECT')
-bpy.context.view_layer.update()
-
-# Create 2.5D Z-layered textured planes for each cut part in exact anatomical registration
-for z_idx, p in enumerate(parts):
-    pid = p["id"]
-    # Prefer untrimmed full-canvas source PNG if present; otherwise place trimmed layer PNG at its bounds
-    src_path = p.get("source")
-    if src_path and not os.path.isabs(src_path):
-        src_path = os.path.join(view_dir, src_path)
-    file_path = p.get("file")
-    if file_path and not os.path.isabs(file_path):
-        file_path = os.path.join(view_dir, file_path)
-
-    y_offset = -0.025 * z_idx
-    bounds = p.get("bounds")
-    if src_path and os.path.isfile(src_path):
-        img_path = src_path
-        pw, ph = w * scale, h * scale
-        cx, cz = 0.0, 0.0
-    elif file_path and os.path.isfile(file_path) and isinstance(bounds, list) and len(bounds) == 4:
-        img_path = file_path
-        bx0, by0, bw0, bh0 = [float(v) for v in bounds]
-        pw = max(0.02, bw0 * scale)
-        ph = max(0.02, bh0 * scale)
-        cx = ((bx0 + bw0 * 0.5) - w * 0.5) * scale
-        cz = (h * 0.5 - (by0 + bh0 * 0.5)) * scale
-    elif file_path and os.path.isfile(file_path):
-        img_path = file_path
-        pw, ph = w * scale, h * scale
-        cx, cz = 0.0, 0.0
-    else:
-        continue
-
-    bpy.ops.mesh.primitive_plane_add(size=1.0, location=(cx, y_offset, cz), rotation=(math.pi / 2.0, 0.0, 0.0))
-    plane = bpy.context.active_object
-    plane.name = f"Part_{pid}"
-    plane.scale = (pw, ph, 1.0)
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-
-    for c in list(plane.users_collection):
-        c.objects.unlink(plane)
-    col_char.objects.link(plane)
-
-    mat = bpy.data.materials.new(name=f"Mat_{pid}")
-    mat.use_nodes = True
-    if hasattr(mat, 'blend_method'):
-        mat.blend_method = 'CLIP'
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-    bsdf = nodes.get("Principled BSDF")
-    tex = nodes.new("ShaderNodeTexImage")
-    tex.image = bpy.data.images.load(img_path)
-    if bsdf:
-        links.new(bsdf.inputs["Base Color"], tex.outputs["Color"])
-        if "Alpha" in bsdf.inputs:
-            links.new(bsdf.inputs["Alpha"], tex.outputs["Alpha"])
-    plane.data.materials.append(mat)
-
-    # Parent to bone while preserving exact world-space rest registration
-    world_mat = plane.matrix_world.copy()
-    plane.parent = arm_obj
-    plane.parent_type = 'BONE'
-    plane.parent_bone = pid
-    pbone = arm_obj.pose.bones.get(pid)
-    if pbone:
-        bone_world = arm_obj.matrix_world @ pbone.matrix
-        plane.matrix_parent_inverse = bone_world.inverted() @ Matrix.Translation((0.0, -(pbone.bone.tail_local - pbone.bone.head_local).length, 0.0))
-        plane.matrix_world = world_mat
-
-# Author multiple named 3D/2.5D actions (walk_bounce, idle, jump) on MoppetRig
-bpy.context.view_layer.objects.active = arm_obj
-bpy.ops.object.mode_set(mode='POSE')
-if not arm_obj.animation_data:
-    arm_obj.animation_data_create()
-
-def key_cycle(action_name, bob_amp, swing_amp, jump_mode=False):
-    act = bpy.data.actions.new(name=action_name)
-    act.use_fake_user = True
-    arm_obj.animation_data.action = act
-    for frame in [1, 13, 25, 37, 48]:
-        scene.frame_set(frame)
-        phase = ((frame - 1) / 12.0) * math.pi
-        for pbone in arm_obj.pose.bones:
-            pbone.rotation_mode = 'XYZ'
-            pbone.location = (0.0, 0.0, 0.0)
-            pbone.rotation_euler = (0.0, 0.0, 0.0)
-            if pbone.name == "torso":
-                pbone.location.z = bob_amp * (max(0.0, math.sin(phase * 0.5)) if jump_mode else abs(math.sin(phase)))
-                pbone.rotation_euler.y = 0.05 * math.sin(phase)
-                pbone.keyframe_insert(data_path="location", frame=frame)
-                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
-            elif pbone.name == "head":
-                pbone.rotation_euler.y = -0.08 * math.sin(phase)
-                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
-            elif pbone.name in ("leg_L", "arm_R"):
-                pbone.rotation_euler.y = swing_amp * math.sin(phase)
-                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
-            elif pbone.name in ("leg_R", "arm_L"):
-                pbone.rotation_euler.y = -swing_amp * math.sin(phase)
-                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
-            elif pbone.name == "tail":
-                pbone.rotation_euler.y = (swing_amp * 0.8) * math.cos(phase)
-                pbone.keyframe_insert(data_path="rotation_euler", frame=frame)
-    return act
-
-key_cycle("idle", 0.015, 0.08, False)
-key_cycle("jump", 0.14, 0.34, True)
-walk_act = key_cycle("walk_bounce", 0.04, 0.28, False)
-arm_obj.animation_data.action = walk_act
-
-bpy.ops.object.mode_set(mode='OBJECT')
-
-# Camera & warm studio lighting
-cam_data = bpy.data.cameras.new("StudioCamera")
-cam_obj = bpy.data.objects.new("StudioCamera", cam_data)
-cam_obj.location = (0.0, -4.2, 0.0)
-cam_obj.rotation_euler = (math.pi / 2.0, 0.0, 0.0)
-scene.collection.objects.link(cam_obj)
-scene.camera = cam_obj
-
-light_data = bpy.data.lights.new(name="KeyLight", type='AREA')
-light_data.energy = 250.0
-light_obj = bpy.data.objects.new(name="KeyLight", object_data=light_data)
-light_obj.location = (1.5, -2.5, 2.0)
-scene.collection.objects.link(light_obj)
-
-if out_glb_path:
-    try:
-        bpy.ops.export_scene.gltf(filepath=out_glb_path, export_format='GLB', export_animations=True)
-        print("SAVED_GLB:", out_glb_path)
-    except Exception as e:
-        print("GLB_WARN:", e)
-
-bpy.ops.wm.save_as_mainfile(filepath=out_blend_path)
-print("SAVED_BLEND:", out_blend_path)
-"#;
-
-    craft_atomic::atomic_write(&script_path, py_script.as_bytes())?;
-    let blender = find_binary("blender").ok_or_else(|| ScribblesError::Tool("blender".into(), "blender not found on PATH".into()))?;
-    let output = Command::new(&blender)
-        .args(["--background", "--python"])
-        .arg(&script_path)
-        .arg("--")
-        .arg(&parts_json)
-        .arg(&out_blend)
-        .arg(&out_glb)
-        .output()
-        .map_err(|e| ScribblesError::Tool("blender".into(), e.to_string()))?;
-
-    if !output.status.success() || !out_blend.is_file() {
-        return Err(ScribblesError::Tool("blender".into(), format!("{}{}", String::from_utf8_lossy(&output.stderr), String::from_utf8_lossy(&output.stdout))));
+/// Scan `source_dir` (defaults to `~/Downloads`) and `<project_root>/storyboard/` for ID-marked
+/// storyboard assets (`<CODE>__<slot>.png` such as `L01__world_stage_image.png`, `S04__hero_image.png`,
+/// `C01__char_original_image.png`, or a downloaded `storyboard-handoff.json`).
+/// Copies each valid PNG into `<project_root>/assets/{backgrounds,characters,images}/<code>/` and returns
+/// the resolved `(id_marker, code, slot, dest_path)` list so the engine can register and place them in one batch.
+pub fn ingest_id_marked_assets(project_root: &Path, source_dir: Option<&Path>) -> Result<Vec<(String, String, String, PathBuf)>> {
+    let mut dirs = Vec::new();
+    if let Some(d) = source_dir {
+        if d.is_dir() {
+            dirs.push(d.to_path_buf());
+        }
+    } else if let Some(home) = std::env::var_os("HOME") {
+        let dl = PathBuf::from(home).join("Downloads");
+        if dl.is_dir() {
+            dirs.push(dl);
+        }
+    }
+    let sb_dir = project_root.join("storyboard/generated");
+    if sb_dir.is_dir() && !dirs.iter().any(|d| d == &sb_dir) {
+        dirs.push(sb_dir);
     }
 
-    // Write 3D / 2.5D manifest & clip descriptors so Magic Studio's 3D / 2.5D inspector discovers the rig and clips
-    let glb_opt = out_glb.is_file().then_some(&out_glb);
-    for (clip_id, clip_name, cat) in
-        [("walk_bounce", "Walk Bounce (2.5D/3D)", "locomotion"), ("idle", "Idle Breathe (2.5D/3D)", "idle"), ("jump", "Jump Arc (2.5D/3D)", "locomotion")]
-    {
-        let clip_doc = json!({
-            "id": clip_id,
-            "name": clip_name,
-            "animation_style": "cutout_2_5d",
-            "source": "blender_moppet_rig",
-            "category": cat,
-            "duration": 2.0,
-            "in_place": true,
-            "glb": glb_opt,
-            "blend": out_blend,
-        });
-        let clip_path = dir_3d.join(format!("{clip_id}.anim.json"));
-        let _ = craft_atomic::atomic_write(&clip_path, &serde_json::to_vec_pretty(&clip_doc).unwrap_or_default());
+    let mut ingested = Vec::new();
+    for dir in dirs {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            let Some(ext) = path.extension().and_then(|s| s.to_str()) else { continue };
+            if !ext.eq_ignore_ascii_case("png") && !ext.eq_ignore_ascii_case("jpg") && !ext.eq_ignore_ascii_case("jpeg") {
+                continue;
+            }
+            let Some((raw_code, raw_slot)) = stem.split_once("__") else { continue };
+            let code = raw_code.trim().to_ascii_uppercase();
+            let slot_clean = raw_slot.split(|c: char| c == ' ' || c == '(').next().unwrap_or(raw_slot).trim().to_ascii_lowercase();
+            if code.is_empty() || slot_clean.is_empty() {
+                continue;
+            }
+            let id_marker = format!("{code}__{slot_clean}");
+            let folder_id = sanitize_id(&id_marker);
+            let category = if code.starts_with('L') {
+                "backgrounds"
+            } else if code.starts_with('C') {
+                "characters"
+            } else {
+                "images"
+            };
+            let dest_dir = project_root.join("assets").join(category).join(&folder_id);
+            let dest_png = dest_dir.join(format!("{id_marker}.png"));
+            if ensure_valid_png(&path, &dest_png).is_ok() {
+                ingested.push((id_marker, code, slot_clean, dest_png));
+            }
+        }
     }
-    let tripo_manifest = json!({
-        "character": char_id,
-        "animation_style": "cutout_2_5d",
-        "base_model_glb": glb_opt,
-        "blend": out_blend,
-        "rig_type": "plush-9",
-        "skeleton_preset": "plush-9",
-        "animate_in_place": true,
-    });
-    let _ = craft_atomic::atomic_write(&dir_3d.join("tripo.json"), &serde_json::to_vec_pretty(&tripo_manifest).unwrap_or_default());
-
-    if open_gui {
-        let _ = Command::new(&blender)
-            .arg(&out_blend)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-    }
-
-    Ok(json!({
-        "ok": true,
-        "character": char_id,
-        "view": view,
-        "animation_style": "cutout_2_5d",
-        "blend": out_blend,
-        "glb": glb_opt,
-        "parts_json": parts_json,
-        "opened_in_blender": open_gui,
-    }))
+    ingested.sort_by(|a, b| a.0.cmp(&b.0));
+    ingested.dedup_by(|a, b| a.0 == b.0);
+    Ok(ingested)
 }

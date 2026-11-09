@@ -325,6 +325,42 @@ pub fn cmd_storyboard_pages(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"ok": true, "path": b.path(), "pages": list}))
 }
 
+/// `storyboard.locations` / `locations`: inspect or update the storyboard's location / world pages (`world` archetype) and registered background plates.
+pub fn cmd_storyboard_locations(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut b = Storyboard::open(&doc_path(s, p)?)?;
+    let pages = b.pages()?;
+    let stories = b.frame_stories()?;
+    let world_indices: Vec<usize> = pages.iter().filter(|pg| pg.archetype == "world").map(|pg| pg.index).collect();
+    if p.get("fields").is_some() || p.get("images").is_some() || p.get("text").is_some() || p.get("image").is_some() || p.get("refs").is_some() {
+        let target = if p.get("page").is_some() || p.get("label").is_some() {
+            page_index(&pages, p)?
+        } else {
+            *world_indices.first().ok_or_else(|| bad("this storyboard has no `world` / location page"))?
+        };
+        let labels = pages[target].labels();
+        let mut steps = Vec::new();
+        push_scene_steps(s, &stories, &labels, p, &mut steps)?;
+        if !steps.is_empty() {
+            b.run_batch(&steps)?;
+            b.save()?;
+        }
+    }
+    let pages = b.pages()?;
+    let locations: Vec<Value> = pages.iter().filter(|pg| pg.archetype == "world").map(Page::to_json).collect();
+    let backgrounds: Vec<Value> = s
+        .project_assets
+        .iter()
+        .filter(|a| a.path.as_ref().is_some_and(|p| p.to_string_lossy().contains("/backgrounds/")))
+        .map(|a| json!({"id": a.id, "name": a.name, "path": a.path}))
+        .collect();
+    Ok(json!({
+        "ok": true,
+        "path": b.path(),
+        "locations": locations,
+        "backgrounds": backgrounds,
+    }))
+}
+
 /// `storyboard.set`: change one page's text, images and contact strip (or a multi-page `pages` array), then save in one batch.
 pub fn cmd_storyboard_set(s: &mut Session, p: &Value) -> Result<Value> {
     let mut b = Storyboard::open(&doc_path(s, p)?)?;

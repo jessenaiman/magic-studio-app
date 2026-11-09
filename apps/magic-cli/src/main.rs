@@ -253,6 +253,9 @@ fn run_ui(target: &mut Target, action: &str, value: Option<String>, params: Opti
 }
 
 fn resolve_shorthand(tokens: &[String]) -> Result<(String, Vec<String>), String> {
+    if tokens.first().map(String::as_str) == Some("locations") {
+        return Ok(("storyboard.locations".into(), tokens[1..].to_vec()));
+    }
     if tokens.first().map(String::as_str) == Some("studio") {
         return match tokens.get(1).map(String::as_str) {
             Some("open") => {

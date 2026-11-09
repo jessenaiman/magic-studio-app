@@ -10,8 +10,8 @@ use serde_json::{Value, json};
 
 pub(crate) use commands::{CompletionCache, completion};
 pub use commands::{
-    cmd_storyboard_add, cmd_storyboard_check, cmd_storyboard_cues, cmd_storyboard_export, cmd_storyboard_lyrics, cmd_storyboard_new, cmd_storyboard_open,
-    cmd_storyboard_pages, cmd_storyboard_section, cmd_storyboard_set, cmd_storyboard_thumbnail,
+    cmd_storyboard_add, cmd_storyboard_check, cmd_storyboard_cues, cmd_storyboard_export, cmd_storyboard_locations, cmd_storyboard_lyrics, cmd_storyboard_new,
+    cmd_storyboard_open, cmd_storyboard_pages, cmd_storyboard_section, cmd_storyboard_set, cmd_storyboard_thumbnail,
 };
 
 use crate::{EngineError, Result};

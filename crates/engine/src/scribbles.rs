@@ -1,19 +1,29 @@
 //! Scribbles engine commands — thin dispatch to [`craft_scribbles`] (L4).
 //!
-//! Launches/focuses Google Flow's **Moppet Maker** in a dedicated Chrome `--app` window (where
-//! Google handles all authentication and Ultra subscription credits), ingests downloaded
-//! Moppet Maker packages (`handoff.json`, `character.png`, `parts-sheet.png`, `pose-sheet.png`),
-//! builds animated looping SVGs + EffectCraft sprite cycles, and generates short AI video clips.
+//! Launches/focuses Google Flow's **Moppet Maker** (character animation: parts sheets, pose sheets,
+//! sprite cycles) or **Storyboard & Animation Master Pack** (one-pass storyboard asset generation
+//! & page recreation with `<CODE>__<slot>` ID markers), ingests downloaded packages, builds
+//! animated looping SVGs + EffectCraft sprite cycles, and generates short AI video clips.
 
 use crate::{EngineError, Result, Session};
-use craft_scribbles::{DEFAULT_FLOW_PROJECT_URL, DEFAULT_MOPPET_MAKER_URL, VideoClipRequest};
+use craft_scribbles::{
+    DEFAULT_FLOW_PROJECT_URL, DEFAULT_MOPPET_MAKER_URL, DEFAULT_STORYBOARD_PACK_TOOL_URL, StoryboardPackItem, VideoClipRequest, classify_animation_style,
+};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-/// Launch or focus Google Flow's Moppet Maker in a dedicated Chrome `--app` window, and
-/// if a project is currently open, automatically ingest any new Moppet Maker assets in `~/Downloads`.
+/// Launch or focus Google Flow's Moppet Maker (`tool=moppet`) or Storyboard & Animation Master Pack
+/// (`tool=storyboard` / `tool=pack`) in a dedicated Chrome `--app` window, and if a project is
+/// currently open, automatically ingest any new assets in `~/Downloads`.
 pub fn cmd_scribbles_open(s: &mut Session, p: &Value) -> Result<Value> {
-    let custom_url = p["url"].as_str();
+    let custom_url = p["url"].as_str().or_else(|| {
+        p["tool"].as_str().and_then(|t| match t.trim().to_ascii_lowercase().as_str() {
+            "storyboard" | "pack" | "master" | "pages" => Some(DEFAULT_STORYBOARD_PACK_TOOL_URL),
+            "moppet" | "animation" | "character" => Some(DEFAULT_MOPPET_MAKER_URL),
+            _ => None,
+        })
+    });
     let mut out = craft_scribbles::open_moppet_maker_window(custom_url).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
     if p["ingest"].as_bool().unwrap_or(true)
         && s.project_path.is_some()
@@ -123,6 +133,15 @@ pub fn cmd_scribbles_ingest(s: &mut Session, p: &Value) -> Result<Value> {
         registered.push(res);
     }
 
+    // Also ingest any ID-marked storyboard assets (`<CODE>__<slot>.png`) from `~/Downloads` or `storyboard/generated`
+    // and auto-place them onto their exact storyboard pages and slots in a single batch!
+    let mut id_placed = Vec::new();
+    if let Ok(marked) = craft_scribbles::ingest_id_marked_assets(root, source_dir.as_deref())
+        && !marked.is_empty()
+    {
+        id_placed = apply_id_marked_assets_to_storyboard(s, &marked);
+    }
+
     Ok(json!({
         "ok": true,
         "character_id": bundle.character_id,
@@ -140,7 +159,106 @@ pub fn cmd_scribbles_ingest(s: &mut Session, p: &Value) -> Result<Value> {
         "animated_svg": bundle.animated_svg,
         "registered_count": registered.len(),
         "registered": registered,
+        "storyboard_placed_count": id_placed.len(),
+        "storyboard_placed": id_placed,
     }))
+}
+
+/// Route ID-marked files (`<CODE>__<slot>.png`) to `project.add_asset` and `storyboard.set` in one batch.
+fn apply_id_marked_assets_to_storyboard(s: &mut Session, marked: &[(String, String, String, PathBuf)]) -> Vec<Value> {
+    let mut page_images: BTreeMap<usize, serde_json::Map<String, Value>> = BTreeMap::new();
+    let mut scene_images: BTreeMap<usize, serde_json::Map<String, Value>> = BTreeMap::new();
+    let mut placed_summary = Vec::new();
+
+    // Inspect storyboard pages so we can map `COVER`, `L01`..`L03`, `C01`..`C03`, `S01`..`S99`, or `P<n>` to exact page indices
+    let pages_val = s.execute("storyboard.pages", json!({ "full": true })).unwrap_or_default();
+    let pages_arr = pages_val["pages"].as_array().cloned().unwrap_or_default();
+    let total_pages = pages_arr.len();
+
+    for (id_marker, code, slot, path) in marked {
+        let path_str = path.to_string_lossy().to_string();
+        let asset_name = craft_scribbles::sanitize_id(id_marker);
+        let _ = s.execute(
+            "project.add_asset",
+            json!({
+                "path": path_str,
+                "kind": "image",
+                "name": asset_name,
+                "load": false
+            }),
+        );
+
+        if code == "COVER" {
+            page_images.entry(0).or_default().insert(slot.clone(), json!(path_str));
+        } else if let Some(num_str) = code.strip_prefix('P')
+            && let Ok(p_idx) = num_str.parse::<usize>()
+        {
+            page_images.entry(p_idx).or_default().insert(slot.clone(), json!(path_str));
+        } else if let Some(num_str) = code.strip_prefix('L')
+            && let Ok(loc_no) = num_str.parse::<usize>()
+        {
+            // Place on the primary world page (`page=1`) into `world_stage_image` (L01), `world_source_image` (L02), `world_result_image` (L03)
+            let target_slot = if slot.starts_with("world_") {
+                slot.clone()
+            } else {
+                match loc_no {
+                    1 => "world_stage_image".to_string(),
+                    2 => "world_source_image".to_string(),
+                    _ => "world_result_image".to_string(),
+                }
+            };
+            page_images.entry(1).or_default().insert(target_slot.clone(), json!(path_str));
+            if (1..=3).contains(&loc_no) {
+                page_images.entry(0).or_default().insert(format!("cover_reg_thumb_{loc_no}"), json!(path_str));
+            }
+        } else if let Some(num_str) = code.strip_prefix('C')
+            && let Ok(char_no) = num_str.parse::<usize>()
+        {
+            let target_slot = if slot.starts_with("char_") { slot.clone() } else { "char_original_image".to_string() };
+            page_images.entry(2).or_default().insert(target_slot, json!(path_str));
+            if (1..=3).contains(&char_no) {
+                page_images.entry(0).or_default().insert(format!("cover_reg_thumb_{}", char_no + 3), json!(path_str));
+            }
+        } else if let Some(num_str) = code.strip_prefix('S')
+            && let Ok(scene_no) = num_str.parse::<usize>()
+        {
+            let entry = scene_images.entry(scene_no).or_default();
+            entry.insert(slot.clone(), json!(path_str));
+            if slot == "hero_image" {
+                entry.entry("result_image".to_string()).or_insert_with(|| json!(path_str));
+                if (1..=5).contains(&scene_no) {
+                    page_images.entry(0).or_default().insert(format!("cover_songmap_{scene_no}"), json!(path_str));
+                }
+            }
+        }
+
+        placed_summary.push(json!({
+            "id_marker": id_marker,
+            "code": code,
+            "slot": slot,
+            "path": path,
+        }));
+    }
+
+    let mut batch_pages = Vec::new();
+    for (p_idx, imgs) in page_images {
+        if p_idx < total_pages || total_pages == 0 {
+            batch_pages.push(json!({
+                "page": p_idx,
+                "images": Value::Object(imgs),
+            }));
+        }
+    }
+    for (scene_no, imgs) in scene_images {
+        batch_pages.push(json!({
+            "scene": scene_no,
+            "images": Value::Object(imgs),
+        }));
+    }
+    if !batch_pages.is_empty() {
+        let _ = s.execute("storyboard.set", json!({ "pages": batch_pages }));
+    }
+    placed_summary
 }
 
 /// Generate an image through the configured provider (defaults to `"flow"` via Google Flow)
@@ -156,15 +274,17 @@ pub fn cmd_scribbles_generate(s: &mut Session, p: &Value) -> Result<Value> {
     crate::image_generation::generate(s, &req)
 }
 
-/// Inspect Scribbles / Google Flow Moppet Maker status and URLs.
+/// Inspect Scribbles / Google Flow Moppet Maker and Storyboard Master Pack status and URLs.
 pub fn cmd_scribbles_templates(_: &mut Session, _: &Value) -> Result<Value> {
     Ok(json!({
         "ok": true,
         "provider": "flow",
         "tool": "Moppet Maker",
         "url": DEFAULT_MOPPET_MAKER_URL,
+        "storyboard_pack_tool": "Storyboard & Animation Master Pack",
+        "storyboard_pack_url": DEFAULT_STORYBOARD_PACK_TOOL_URL,
         "project_url": DEFAULT_FLOW_PROJECT_URL,
-        "outputs": ["character.png", "parts-sheet.png", "pose-sheet.png", "handoff.json"],
+        "outputs": ["character.png", "parts-sheet.png", "pose-sheet.png", "handoff.json", "<CODE>__<slot>.png", "storyboard-pack.json"],
     }))
 }
 
@@ -318,20 +438,172 @@ pub fn cmd_scribbles_reassemble(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(out)
 }
 
-/// Build an articulated Blender `.blend` scene (`MoppetRig` armature + layered cut-out planes +
-/// 48-frame animated walk/bounce cycle) from a character's reassembled `parts.json` and optionally
-/// launch Blender interactively.
-pub fn cmd_scribbles_blender(s: &mut Session, p: &Value) -> Result<Value> {
-    let project = s.project_path.clone().ok_or_else(|| EngineError::InvalidParams("Open a project before building a Blender Moppet rig".into()))?;
+/// Build the Master Storyboard & Animation Pack (`storyboard/storyboard-pack.json`) by reading
+/// every page (or a requested `page` / `scene`) of `storyboard.designcraft`, extracting its
+/// `exact_prompt` / `world_location_prompt` / `char_exact_prompt`, reference plates (`location_ref`,
+/// `character_lead`, `character_shared`), animation style, and deterministic ID name markers (`<CODE>__<slot>`).
+pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
+    let project = s.project_path.clone().ok_or_else(|| EngineError::InvalidParams("Open a project before building a storyboard pack".into()))?;
     let root = project.parent().ok_or_else(|| EngineError::InvalidParams("Project has no parent directory".into()))?;
-    let char_id = p["character"].as_str().map(crate::workspace::sanitize_asset_id).unwrap_or_else(|| "label-pangolin".into());
-    let view = p["view"].as_str().unwrap_or("front");
-    let open_gui = p["open"].as_bool().unwrap_or(false);
+    let pages_val = s.execute("storyboard.pages", json!({ "full": true }))?;
+    let pages = pages_val["pages"].as_array().cloned().unwrap_or_default();
 
-    let view_dir = root.join("assets/characters").join(&char_id).join(view);
-    if !view_dir.join("parts.json").is_file() {
-        let _ = cmd_scribbles_reassemble(s, &json!({ "character": char_id, "view": view, "rig": true }));
+    let filter_page = p.get("page").and_then(Value::as_u64).map(|n| n as usize);
+    let filter_scene = p.get("scene").and_then(Value::as_u64).map(|n| n as usize);
+
+    let slot_text = |slots: &[Value], label: &str| -> String {
+        slots.iter().find(|sl| sl["label"].as_str() == Some(label)).and_then(|sl| sl["text"].as_str()).unwrap_or_default().trim().to_string()
+    };
+    let slot_image = |slots: &[Value], label: &str| -> Option<String> {
+        slots.iter().find(|sl| sl["label"].as_str() == Some(label)).and_then(|sl| sl["image"].as_str()).map(str::to_string)
+    };
+
+    let core_style =
+        pages.first().and_then(|pg| pg["slots"].as_array()).map(|sl| slot_text(sl, "cover_subtitle")).filter(|t| !t.is_empty()).unwrap_or_else(|| {
+            "CORE STYLE: torn notebook paper, painted ink, cardboard, clay, foil; front 3/4 only, quiet title zone, no text in image.".into()
+        });
+
+    let mut items: Vec<StoryboardPackItem> = Vec::new();
+    let mut scene_counter = 0usize;
+
+    for pg in &pages {
+        let page_idx = pg["page"].as_u64().unwrap_or(0) as usize;
+        let archetype = pg["archetype"].as_str().unwrap_or("scene").to_string();
+        let title = pg["title"].as_str().unwrap_or_default().to_string();
+        let slots = pg["slots"].as_array().cloned().unwrap_or_default();
+
+        if archetype == "scene" {
+            scene_counter += 1;
+        }
+        if let Some(fp) = filter_page
+            && fp != page_idx
+        {
+            continue;
+        }
+        if let Some(fs) = filter_scene
+            && (archetype != "scene" || scene_counter != fs)
+        {
+            continue;
+        }
+
+        match archetype.as_str() {
+            "cover" => {
+                let prompt = format!("{core_style} | {}", slot_text(&slots, "cover_overall_design"));
+                items.push(StoryboardPackItem {
+                    id_marker: "COVER__cover_key_art".into(),
+                    code: "COVER".into(),
+                    page: page_idx,
+                    archetype: archetype.clone(),
+                    slot: "cover_key_art".into(),
+                    kind: "cover".into(),
+                    title: title.clone(),
+                    prompt,
+                    animation_style: "collage_key_art".into(),
+                    references: vec!["L01".into(), "L02".into(), "C01".into()],
+                    existing_image: slot_image(&slots, "cover_key_art"),
+                });
+            }
+            "world" if page_idx == 1 => {
+                let base_prompt = slot_text(&slots, "world_location_prompt");
+                for (code, slot, desc) in [
+                    ("L01", "world_stage_image", "L01 Blank Paper Wall (verse): blank ruled notebook paper wall + hand-drawn ink doodle arrows"),
+                    ("L02", "world_source_image", "L02 Cardboard Box (chorus mock): open corrugated cardboard box + empty tray, front 3/4"),
+                    ("L03", "world_result_image", "L03 Clay Room (AI plate outro): empty matte clay room + crumpled foil spotlight cone, no text"),
+                ] {
+                    items.push(StoryboardPackItem {
+                        id_marker: format!("{code}__{slot}"),
+                        code: code.into(),
+                        page: page_idx,
+                        archetype: archetype.clone(),
+                        slot: slot.into(),
+                        kind: "location".into(),
+                        title: desc.into(),
+                        prompt: format!("{base_prompt} | FOCUS: {desc}"),
+                        animation_style: "location_plate".into(),
+                        references: vec!["COVER".into()],
+                        existing_image: slot_image(&slots, slot),
+                    });
+                }
+            }
+            "char" => {
+                let base_prompt = slot_text(&slots, "char_exact_prompt");
+                for (code, slot, desc) in [
+                    ("C01", "char_original_image", "C01 Creator paper cutout character with crayon shrug, front 3/4"),
+                    ("C02", "char_pose_image", "C02 Clay Mic with crumpled silver foil grille on clay stand, front 3/4"),
+                    ("C03", "char_geometry_pose", "C03 Paper Hand cutout reaching with cursor physics energy, front 3/4"),
+                ] {
+                    items.push(StoryboardPackItem {
+                        id_marker: format!("{code}__{slot}"),
+                        code: code.into(),
+                        page: page_idx,
+                        archetype: archetype.clone(),
+                        slot: slot.into(),
+                        kind: "character".into(),
+                        title: desc.into(),
+                        prompt: format!("{base_prompt} | FOCUS: {desc}"),
+                        animation_style: "cutout_rig".into(),
+                        references: vec!["COVER".into()],
+                        existing_image: slot_image(&slots, slot),
+                    });
+                }
+            }
+            "scene" => {
+                let code = format!("S{scene_counter:02}");
+                let design = slot_text(&slots, "overall_design");
+                let exact_prompt = slot_text(&slots, "exact_prompt");
+                let loc_ref = slot_text(&slots, "location_ref");
+                let char_lead = slot_text(&slots, "character_lead");
+                let char_shared = slot_text(&slots, "character_shared");
+                let mut refs = Vec::new();
+                for r in [&loc_ref, &char_lead, &char_shared] {
+                    if !r.is_empty() && !r.starts_with('[') {
+                        refs.push(r.clone());
+                    }
+                }
+                let anim_style = classify_animation_style(&design, &exact_prompt);
+                items.push(StoryboardPackItem {
+                    id_marker: format!("{code}__hero_image"),
+                    code,
+                    page: page_idx,
+                    archetype: archetype.clone(),
+                    slot: "hero_image".into(),
+                    kind: "scene".into(),
+                    title: format!("SCENE {scene_counter:02} — {}", slot_text(&slots, "title")),
+                    prompt: if exact_prompt.is_empty() { format!("{core_style} | {design}") } else { exact_prompt },
+                    animation_style: anim_style,
+                    references: refs,
+                    existing_image: slot_image(&slots, "hero_image"),
+                });
+            }
+            _ => {}
+        }
     }
 
-    craft_scribbles::build_blender_rig_from_parts(root, &char_id, view, open_gui).map_err(|e| EngineError::InvalidParams(e.to_string()))
+    let missing_count = items.iter().filter(|i| i.existing_image.is_none()).count();
+    let pack_doc = json!({
+        "ok": true,
+        "format": "magic.storyboard-pack.v1",
+        "project": project,
+        "flow_tool_url": DEFAULT_STORYBOARD_PACK_TOOL_URL,
+        "moppet_maker_url": DEFAULT_MOPPET_MAKER_URL,
+        "core_style": core_style,
+        "total_items": items.len(),
+        "missing_count": missing_count,
+        "items": items,
+    });
+
+    let sb_dir = root.join("storyboard");
+    std::fs::create_dir_all(&sb_dir)?;
+    let out_path = sb_dir.join("storyboard-pack.json");
+    if let Ok(bytes) = serde_json::to_vec_pretty(&pack_doc) {
+        craft_atomic::atomic_write(&out_path, &bytes)?;
+    }
+
+    if p["open"].as_bool().unwrap_or(false) {
+        let _ = craft_scribbles::open_moppet_maker_window(Some(DEFAULT_STORYBOARD_PACK_TOOL_URL));
+    }
+
+    let mut res = pack_doc;
+    res["pack_path"] = json!(out_path);
+    Ok(res)
 }

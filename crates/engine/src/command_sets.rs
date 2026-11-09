@@ -1024,17 +1024,26 @@ fn specs_scribbles() -> Vec<CommandSpec> {
     vec![
         cmd!(
             "scribbles.open",
-            "Open Scribbles (Google Flow Moppet Maker)",
+            "Open Scribbles (Google Flow Moppet Maker or Storyboard Master Pack)",
             ["Scribbles"],
             None,
-            r#"{"url":"optional Google Flow URL (defaults to Moppet Maker)","ingest":true,"character":"optional character id"}"#,
+            r#"{"tool":"optional moppet|storyboard","url":"optional Google Flow URL","ingest":true,"character":"optional character id"}"#,
             always,
             crate::scribbles::cmd_scribbles_open
         ),
         cmd!(
+            "scribbles.pack",
+            "Build Storyboard & Animation Master Pack Manifest with ID Markers (`<CODE>__<slot>`) and Prompts",
+            ["Scribbles", "Storyboard"],
+            None,
+            r#"{"page":"optional page index to recreate","scene":"optional scene number to recreate","open":false}"#,
+            always,
+            crate::scribbles::cmd_scribbles_pack
+        ),
+        cmd!(
             "scribbles.ingest",
-            "Ingest Moppet Maker Downloads into Project (Scribbles)",
-            ["Scribbles"],
+            "Ingest Moppet Maker & ID-Marked Storyboard Downloads into Project (Scribbles)",
+            ["Scribbles", "Storyboard"],
             None,
             r#"{"dir":"optional downloads directory (defaults to ~/Downloads)","character":"optional character id"}"#,
             always,
@@ -1076,15 +1085,6 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "{\"character\":\"character id\",\"view\":\"optional; front|side|back\",\"sheet\":\"optional path to parts-sheet.png\",\"rig\":true,\"action\":\"optional; idle|walk_down|walk_right\"}",
             always,
             crate::scribbles::cmd_scribbles_reassemble
-        ),
-        cmd!(
-            "scribbles.blender",
-            "Build Articulated Blender Rig (.blend) from Reassembled Parts (Scribbles)",
-            ["Scribbles"],
-            None,
-            "{\"character\":\"character id\",\"view\":\"optional; front|side|back\",\"open\":false}",
-            always,
-            crate::scribbles::cmd_scribbles_blender
         ),
     ]
 }
@@ -1136,6 +1136,15 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             "Storyboard Page Summary; One Page in Full With `page`",
             "{\"path\":\"optional storyboard.designcraft\",\"page\":\"optional index: that page's slots\",\"label\":\"optional slot name on `page`\",\"full\":\"true: every page's slots\"}",
             crate::cmd::storyboard::cmd_storyboard_pages
+        ),
+        cmd!(
+            "storyboard.locations",
+            "Inspect or Edit Storyboard Location / World Spreads and Background Plates",
+            ["Storyboard"],
+            None,
+            "{\"path\":\"optional storyboard.designcraft\",\"page\":\"optional world page index\",\"fields\":{},\"images\":{}}",
+            always,
+            crate::cmd::storyboard::cmd_storyboard_locations
         ),
         cmd!(
             "storyboard.set",
