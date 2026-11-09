@@ -1,5 +1,5 @@
 {
-  "model": "gpt-6-luna",
+  "model": "",
   "note": "NOTE: This template is a working structure, not a final specification — follow it to the best of your ability and report any areas or commands that need improvement after use.",
   "shared": "Match the attached reference's art style, design, materials, palette and proportions exactly; with no reference, use felt-plush storybook character art for 2D animation. Plain transparent background; if transparency is unavailable, use one perfectly flat solid pure magenta (#FF00FF) with no gradient, shading or glow anywhere on it, and no magenta in the character. No text, labels, frames, shadows or props. Nothing touches a cell or canvas edge. Clean solid silhouette edge with no loose fibres or specks. Every drawing of the character keeps the same design, palette, proportions and scale.",
   "stance": "Animation-ready stance: standing upright, feet planted shoulder-width apart with a clear gap of background between the legs from the crotch to the floor, arms held slightly away from the body (about 20 degrees) with a clear gap between each arm and the body, hands open, head level. Every limb is fully visible and not overlapping another limb.",

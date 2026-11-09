@@ -43,14 +43,6 @@ fn internal(e: impl std::fmt::Display) -> AiError {
     AiError::new(ErrorKind::Internal, e.to_string())
 }
 
-pub fn default_model_for_provider(provider: &str) -> &'static str {
-    match provider {
-        "agy" => AGY_MODEL,
-        "flow" => FLOW_MODEL,
-        _ => CODEX_MODEL,
-    }
-}
-
 fn label_for_provider(provider: &str) -> &'static str {
     match provider {
         "agy" => "AGY (Gemini 3.8 Flash)",
@@ -64,7 +56,7 @@ fn image_spec() -> std::result::Result<CapabilitySpec, AiError> {
     Ok(CapabilitySpec::new(capability).accepting(InputRole::Prompt, 1).accepting(InputRole::Reference, MAX_REFERENCES).requiring(InputRole::Prompt))
 }
 
-fn models_for_provider(provider: &str) -> std::result::Result<Vec<ModelInfo>, AiError> {
+pub(crate) fn models_for_provider(provider: &str) -> std::result::Result<Vec<ModelInfo>, AiError> {
     let spec = image_spec()?;
     let pairs: &[(&str, &str)] = match provider {
         "agy" => &[
@@ -219,11 +211,21 @@ fn image_request(role: &craft_ai_core::Role, prompt: &str, references: &[PathBuf
 
 /// Ensure `codex`, `agy`, and `flow` connections exist in `SharedStore` and choose `provider` + `model`
 /// for the `scribbles` role in `ToolDesk`.
+/// No hard-coded fallbacks: `provider` and `model` must come from the caller
+/// (usually Magic settings `scribbles.provider` / `image.provider` and
+/// `scribbles.model`, or explicit params). Empty values error so an API
+/// route with no funds can never be chosen implicitly.
 pub fn ensure_connections_and_choice(provider: &str, model_override: Option<&str>) -> Result<(String, String)> {
-    let canonical_provider = match provider.trim() {
+    let raw_provider = provider.trim();
+    if raw_provider.is_empty() {
+        return Err(EngineError::InvalidParams(
+            "no Scribbles provider is chosen: set scribbles.provider or image.provider, or pass provider= to scribbles.connect".into(),
+        ));
+    }
+    let canonical_provider = match raw_provider {
         "agy" | "flash" | "gemini-flash" => AGY_PROVIDER,
         "flow" | "browser" | "browser-agent" => FLOW_PROVIDER,
-        "codex" | "luna" | "" => CODEX_PROVIDER,
+        "codex" | "luna" => CODEX_PROVIDER,
         other => {
             return Err(EngineError::InvalidParams(format!("unknown Scribbles provider `{other}`: expected `codex`, `agy`, or `flow`")));
         }
@@ -237,7 +239,11 @@ pub fn ensure_connections_and_choice(provider: &str, model_override: Option<&str
             "flow" => *m != CODEX_MODEL && !m.starts_with("gemini-"),
             _ => true,
         })
-        .unwrap_or_else(|| default_model_for_provider(canonical_provider));
+        .ok_or_else(|| {
+            EngineError::InvalidParams(format!(
+                "no model chosen for provider `{canonical_provider}`: pass model= or set scribbles.model (no hard-coded default)"
+            ))
+        })?;
 
     let shared = SharedStore::at_default_location().map_err(engine)?;
     let mut connections_to_save = Vec::new();
@@ -272,10 +278,42 @@ pub fn ensure_connections_and_choice(provider: &str, model_override: Option<&str
     Ok((canonical_provider.to_owned(), chosen_model.to_owned()))
 }
 
-/// Draws through [`AiClient`] (optionally switching to `provider_override` / `model_override`) and writes the PNG to `out`.
+/// Draws through [`AiClient`] and writes the PNG to `out`.
+/// No hard-coded connection: the provider/model must already be chosen in
+/// Magic settings (via `scribbles.connect`). Per-request overrides that do
+/// not match those settings error instead of silently switching.
 pub(crate) fn draw_with(provider_override: Option<&str>, model_override: Option<&str>, prompt: &str, references: &[PathBuf], out: &Path) -> Result<()> {
-    if let Some(prov) = provider_override.map(str::trim).filter(|s| !s.is_empty()) {
-        let _ = ensure_connections_and_choice(prov, model_override)?;
+    {
+        let settings = crate::project_settings::stored_settings();
+        let stored_provider = settings["scribbles"]["provider"]
+            .as_str()
+            .filter(|v| !v.trim().is_empty())
+            .or_else(|| settings["image"]["provider"].as_str().filter(|v| !v.trim().is_empty()))
+            .unwrap_or("");
+        let stored_model = settings["scribbles"]["model"].as_str().unwrap_or("");
+        if let Some(_prov) = provider_override.map(str::trim).filter(|s| !s.is_empty())
+            && stored_provider.is_empty()
+        {
+            return Err(EngineError::InvalidParams(
+                "no Scribbles provider is chosen in settings: run `magic-cli exec scribbles.connect provider=<codex|agy|flow> model=<id>` first".into(),
+            ));
+        }
+        if let Some(prov) = provider_override.map(str::trim).filter(|s| !s.is_empty())
+            && !stored_provider.is_empty()
+            && prov != stored_provider
+        {
+            return Err(EngineError::InvalidParams(format!(
+                "provider `{prov}` does not match settings `scribbles.provider` ({stored_provider}): run `magic-cli exec scribbles.connect provider={prov}` first"
+            )));
+        }
+        if let Some(mdl) = model_override.map(str::trim).filter(|s| !s.is_empty())
+            && !stored_model.is_empty()
+            && mdl != stored_model
+        {
+            return Err(EngineError::InvalidParams(format!(
+                "model `{mdl}` does not match settings `scribbles.model` ({stored_model}): run `magic-cli exec scribbles.connect` with that model first"
+            )));
+        }
     }
     let role = crate::fidget::scribbles_role()?;
     let client = client()?;
@@ -314,10 +352,19 @@ pub fn cmd_scribbles_connect(s: &mut Session, p: &Value) -> Result<Value> {
         .filter(|v| !v.trim().is_empty())
         .or_else(|| settings["scribbles"]["provider"].as_str().filter(|v| !v.trim().is_empty()))
         .or_else(|| settings["image"]["provider"].as_str().filter(|v| !v.trim().is_empty()))
-        .unwrap_or(CODEX_PROVIDER);
-    let requested_model = p["model"].as_str().filter(|v| !v.trim().is_empty());
+        .ok_or_else(|| {
+            EngineError::InvalidParams("no provider is chosen: pass provider=codex|agy|flow or set scribbles.provider (no hard-coded default)".into())
+        })?;
+    let requested_model =
+        p["model"].as_str().filter(|v| !v.trim().is_empty()).or_else(|| settings["scribbles"]["model"].as_str().filter(|v| !v.trim().is_empty())).ok_or_else(
+            || {
+                EngineError::InvalidParams(
+                    "no model is chosen: pass model= or set scribbles.model (no hard-coded default; API routes with no funds are not chosen implicitly)".into(),
+                )
+            },
+        )?;
 
-    let (provider, model) = ensure_connections_and_choice(requested_provider, requested_model)?;
+    let (provider, model) = ensure_connections_and_choice(requested_provider, Some(requested_model))?;
 
     let _ = s.execute("prefs.set", json!({ "key": "scribbles.provider", "value": provider }));
     let _ = s.execute("prefs.set", json!({ "key": "scribbles.model", "value": model }));
@@ -329,9 +376,9 @@ pub fn cmd_scribbles_connect(s: &mut Session, p: &Value) -> Result<Value> {
         "provider": provider,
         "model": model,
         "available_providers": [
-            { "id": CODEX_PROVIDER, "label": label_for_provider(CODEX_PROVIDER), "default_model": CODEX_MODEL },
-            { "id": AGY_PROVIDER, "label": label_for_provider(AGY_PROVIDER), "default_model": AGY_MODEL },
-            { "id": FLOW_PROVIDER, "label": label_for_provider(FLOW_PROVIDER), "default_model": FLOW_MODEL },
+            { "id": CODEX_PROVIDER, "label": label_for_provider(CODEX_PROVIDER), "models": models_for_provider(CODEX_PROVIDER).map(|v| v.iter().map(|m| m.id.as_str().to_owned()).collect::<Vec<_>>()).unwrap_or_default() },
+            { "id": AGY_PROVIDER, "label": label_for_provider(AGY_PROVIDER), "models": models_for_provider(AGY_PROVIDER).map(|v| v.iter().map(|m| m.id.as_str().to_owned()).collect::<Vec<_>>()).unwrap_or_default() },
+            { "id": FLOW_PROVIDER, "label": label_for_provider(FLOW_PROVIDER), "models": models_for_provider(FLOW_PROVIDER).map(|v| v.iter().map(|m| m.id.as_str().to_owned()).collect::<Vec<_>>()).unwrap_or_default() },
         ],
         "craft_ai": crate::fidget::craft_ai_status(),
     }))
@@ -350,11 +397,23 @@ pub fn cmd_scribbles_consent(_: &mut Session, p: &Value) -> Result<Value> {
     })?;
 
     let settings = crate::project_settings::stored_settings();
-    let current_provider = settings["scribbles"]["provider"].as_str().or_else(|| settings["image"]["provider"].as_str()).unwrap_or(CODEX_PROVIDER).to_owned();
-    let current_model = settings["scribbles"]["model"].as_str().map(str::to_owned);
+    let current_provider = settings["scribbles"]["provider"]
+        .as_str()
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| settings["image"]["provider"].as_str().filter(|v| !v.trim().is_empty()))
+        .ok_or_else(|| {
+            EngineError::InvalidParams("no provider is chosen in settings: run scribbles.connect with provider=<codex|agy|flow> and model=<id> first".into())
+        })?
+        .to_owned();
+    let _current_model = settings["scribbles"]["model"].as_str().map(str::to_owned);
 
-    let target_providers: Vec<&str> =
-        if let Some(prov) = p["provider"].as_str().filter(|s| !s.trim().is_empty()) { vec![prov] } else { vec![CODEX_PROVIDER, AGY_PROVIDER, FLOW_PROVIDER] };
+    // Consent is for the provider the user already chose in settings
+    // (or an explicit one they name). Never fabricate connections here.
+    let explicit = p["provider"].as_str().filter(|s| !s.trim().is_empty()).map(str::to_owned);
+    let target_providers: Vec<String> = match explicit {
+        Some(prov) => vec![prov],
+        None => vec![current_provider.clone()],
+    };
 
     let role = crate::fidget::scribbles_role()?;
     let client = client()?;
@@ -363,8 +422,12 @@ pub fn cmd_scribbles_consent(_: &mut Session, p: &Value) -> Result<Value> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(engine)?.as_secs();
     let mut destinations = Vec::new();
 
-    for prov in target_providers {
-        let _ = ensure_connections_and_choice(prov, None)?;
+    for prov in &target_providers {
+        if prov != &current_provider {
+            return Err(EngineError::InvalidParams(format!(
+                "cannot consent to `{prov}` until it is chosen: run `magic-cli exec scribbles.connect provider={prov} model=<id>` first"
+            )));
+        }
         let request = Request::new(role.capability.clone())
             .with_input(InputRole::Prompt, Payload::text("consent"))
             .with_input(InputRole::Reference, Payload::inline("image/png", vec![0x89, b'P', b'N', b'G']).map_err(engine)?);
@@ -375,8 +438,6 @@ pub fn cmd_scribbles_consent(_: &mut Session, p: &Value) -> Result<Value> {
     if term.remembers() {
         file.save(&ledger).map_err(engine)?;
     }
-    // Restore active provider choice
-    let _ = ensure_connections_and_choice(&current_provider, current_model.as_deref());
 
     Ok(json!({
         "ok": true,

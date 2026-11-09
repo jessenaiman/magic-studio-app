@@ -30,16 +30,10 @@ impl Default for ProjectPrefs {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ImagePrefs {
-    pub provider: String,
-}
-
-impl Default for ImagePrefs {
-    fn default() -> Self {
-        Self { provider: "codex".into() }
-    }
+    pub provider: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -279,7 +273,7 @@ impl MagicPrefs {
             "project.storyboard_template" => json!(self.project.storyboard_template),
             "project.storyboard_format" => json!(self.project.storyboard_format),
             "project.storyboard_locked" => json!(self.project.storyboard_locked),
-            "image.provider" => json!(self.image.provider),
+            "image.provider" => opt_str_json(&self.image.provider),
             "scribbles.template" => opt_str_json(&self.scribbles.template),
             "scribbles.provider" => opt_str_json(&self.scribbles.provider),
             "scribbles.model" => opt_str_json(&self.scribbles.model),
@@ -319,7 +313,7 @@ impl MagicPrefs {
             "project.storyboard_template" => self.project.storyboard_template = value.as_str().unwrap_or("magic").to_owned(),
             "project.storyboard_format" => self.project.storyboard_format = value.as_str().unwrap_or("designcraft").to_owned(),
             "project.storyboard_locked" => self.project.storyboard_locked = value.as_bool().unwrap_or(true),
-            "image.provider" => self.image.provider = value.as_str().unwrap_or("codex").to_owned(),
+            "image.provider" => self.image.provider = opt_str_from_value(value),
             "scribbles.template" => self.scribbles.template = opt_str_from_value(value),
             "scribbles.provider" => self.scribbles.provider = opt_str_from_value(value),
             "scribbles.model" => self.scribbles.model = opt_str_from_value(value),

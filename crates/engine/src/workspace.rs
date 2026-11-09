@@ -45,11 +45,23 @@ pub fn ensure_control_token() -> Result<String> {
 /// The app keeps `MAGIC_CONTROL_TOKEN` (the loopback control credential) and, when a Craft AI
 /// store uses one, `CRAFT_AI_SECRET_*` in its own environment. Chat agents and Codex inherit the
 /// environment, so without this a child can copy the control credential into its own session
-/// state, logs or scratch files.
+/// state, logs or scratch files. `OPENAI_API_KEY` (and friends) must also be removed: Codex
+/// routes to API billing when it is set, not to the ChatGPT subscription, and Magic holds no API
+/// keys by design. Subscription CLIs must never inherit a paid key from the shell.
 pub fn scrub_inherited_credentials(command: &mut std::process::Command) {
     for (key, _) in std::env::vars_os() {
         let Some(name) = key.to_str() else { continue };
-        if name == "MAGIC_CONTROL_TOKEN" || name.starts_with("CRAFT_AI_SECRET_") {
+        if name == "MAGIC_CONTROL_TOKEN"
+            || name.starts_with("CRAFT_AI_SECRET_")
+            || name == "OPENAI_API_KEY"
+            || name == "OPENAI_ORG"
+            || name == "OPENAI_PROJECT"
+            || name == "CODEX_API_KEY"
+            || name == "ANTHROPIC_API_KEY"
+            || name == "GEMINI_API_KEY"
+            || name == "GOOGLE_API_KEY"
+            || name == "GOOGLE_GENAI_USE_VERTEXAI"
+        {
             command.env_remove(name);
         }
     }

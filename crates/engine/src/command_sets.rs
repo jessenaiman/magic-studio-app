@@ -1036,7 +1036,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Choose Provider for Scribbles (Codex Luna, AGY Flash, or Flow Browser-Agent)",
             ["Scribbles"],
             None,
-            r#"{"provider":"optional codex|agy|flow (default codex)","model":"optional gpt-6-luna|gemini-3.8-flash-medium|nano-banana-2.1"}"#,
+            r#"{"provider":"required codex|agy|flow (settings scribbles.provider or image.provider)","model":"required (settings scribbles.model, no hard-coded default)"}"#,
             always,
             crate::craft_ai_codex::cmd_scribbles_connect
         ),
@@ -1087,7 +1087,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Generate Final Drawing (Scribbles)",
             ["Scribbles"],
             None,
-            r#"{"prompt":"final drawing instructions (unchanged)","references":["optional project PNG paths; max 5"],"provider":"optional; settings scribbles.provider or image provider","model":"optional; settings scribbles.model or gpt-6-luna","project":"optional .magic","character":"optional id","transparent_background":true,"timeout_s":900,"name":"optional","fidget":"optional preparation metadata"}"#,
+            r#"{"prompt":"final drawing instructions (unchanged)","references":["optional project PNG paths; max 5"],"provider":"optional; settings scribbles.provider or image.provider required","model":"optional; settings scribbles.model required (no hard-coded default)","project":"optional .magic","character":"optional id","transparent_background":true,"timeout_s":900,"name":"optional","fidget":"optional preparation metadata"}"#,
             always,
             crate::scribbles::cmd_scribbles_generate
         ),
@@ -1097,7 +1097,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "New Character (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; settings scribbles.model required (no hard-coded default)\",\"character\":\"optional id\",\"name\":\"optional\"}",
             always,
             crate::scribbles::cmd_scribbles_new
         ),
@@ -1106,7 +1106,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Redraw for Animation (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; settings scribbles.model required (no hard-coded default)\",\"character\":\"optional id\",\"name\":\"optional\"}",
             always,
             crate::scribbles::cmd_scribbles_image
         ),
@@ -1115,7 +1115,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Turnaround Sheet (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; settings scribbles.model required (no hard-coded default)\",\"character\":\"optional id\",\"name\":\"optional\"}",
             always,
             crate::scribbles::cmd_scribbles_sheet
         ),
@@ -1124,7 +1124,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Pose Sheet (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; settings scribbles.model required (no hard-coded default)\",\"character\":\"optional id\",\"name\":\"optional\"}",
             always,
             crate::scribbles::cmd_scribbles_poses
         ),
@@ -1160,7 +1160,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Action Frames (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; settings scribbles.model required (no hard-coded default)\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
             always,
             crate::scribbles::cmd_scribbles_actions
         ),
@@ -1169,7 +1169,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Overlapping Layers from One Image (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; settings scribbles.model required (no hard-coded default)\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
             always,
             crate::scribbles::cmd_scribbles_layers
         ),
@@ -1178,7 +1178,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Custom Drawing (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; settings scribbles.model required (no hard-coded default)\",\"character\":\"optional id\",\"name\":\"optional\"}",
             always,
             crate::scribbles::cmd_scribbles_custom
         ),

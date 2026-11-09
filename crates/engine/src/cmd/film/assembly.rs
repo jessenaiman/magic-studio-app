@@ -170,7 +170,9 @@ fn inputs(s: &Session, dir: &Path, p: &Value) -> Result<Inputs> {
     let name = s.project_path.as_ref().and_then(|p| p.file_stem()).map_or("Film".into(), |n| n.to_string_lossy().into_owned());
     let audio = s.song_audio.clone().map(|a| dir.join(a)).filter(|a| a.is_file()).ok_or_else(|| invalid("No song audio in this project"))?;
     let lettering_candidate = dir.join(p["lettering"].as_str().unwrap_or("lettering/lyrics.mov"));
-    let lettering = lettering_candidate.is_file().then_some(lettering_candidate);
+    // No silent skip: missing lettering is an error unless the caller
+    // explicitly passes `"lettering": null`.
+    let explicit_skip = p.get("lettering").is_some_and(|v| v.is_null());
     let duration = crate::workshop::song_ticks(dir)
         .or_else(|| crate::cmd::film::media_duration_ticks(&audio, false).ok())
         .ok_or_else(|| invalid("Song length unknown; analyze the song first"))?;
@@ -198,6 +200,16 @@ fn inputs(s: &Session, dir: &Path, p: &Value) -> Result<Inputs> {
     };
     let characters = parse_clip_list(dir, p["characters"].as_array(), "clip")?;
     let lyrics_clips = parse_clip_list(dir, p["lyrics"].as_array(), "clip")?;
+    let lettering = if lettering_candidate.is_file() {
+        Some(lettering_candidate.clone())
+    } else if explicit_skip {
+        None
+    } else if !lyrics_clips.is_empty() {
+        // `lyrics` clips replace the V3 lettering render. Not an error.
+        None
+    } else {
+        return Err(invalid(format!("No lettering render at {}; run words.letter first", lettering_candidate.display())));
+    };
     Ok(Inputs { name, audio, lettering, backgrounds, characters, lyrics_clips, duration })
 }
 

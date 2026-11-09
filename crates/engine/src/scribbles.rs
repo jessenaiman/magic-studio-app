@@ -667,20 +667,20 @@ pub fn cmd_scribbles_templates(_: &mut Session, _: &Value) -> Result<Value> {
         "providers": [
             {
                 "id": crate::craft_ai_codex::CODEX_PROVIDER,
-                "label": "Codex (GPT-6 Luna · Local Templates)",
-                "default_model": crate::craft_ai_codex::CODEX_MODEL,
+                "label": "Codex",
+                "models": crate::craft_ai_codex::models_for_provider(crate::craft_ai_codex::CODEX_PROVIDER).map(|v| v.iter().map(|m| m.id.as_str().to_owned()).collect::<Vec<_>>()).unwrap_or_default(),
                 "mode": "local"
             },
             {
                 "id": crate::craft_ai_codex::AGY_PROVIDER,
-                "label": "AGY (Gemini 3.8 Flash · Local Templates)",
-                "default_model": crate::craft_ai_codex::AGY_MODEL,
+                "label": "AGY (Gemini Flash)",
+                "models": crate::craft_ai_codex::models_for_provider(crate::craft_ai_codex::AGY_PROVIDER).map(|v| v.iter().map(|m| m.id.as_str().to_owned()).collect::<Vec<_>>()).unwrap_or_default(),
                 "mode": "local"
             },
             {
                 "id": crate::craft_ai_codex::FLOW_PROVIDER,
-                "label": "Google Flow (Nano Banana · Browser-Agent)",
-                "default_model": crate::craft_ai_codex::FLOW_MODEL,
+                "label": "Google Flow (Browser-Agent)",
+                "models": crate::craft_ai_codex::models_for_provider(crate::craft_ai_codex::FLOW_PROVIDER).map(|v| v.iter().map(|m| m.id.as_str().to_owned()).collect::<Vec<_>>()).unwrap_or_default(),
                 "mode": "browser-agent"
             }
         ],

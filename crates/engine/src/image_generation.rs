@@ -14,6 +14,14 @@ fn invalid(message: &str) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
 
+/// Serializes subscription image jobs. Codex and AGY both pick their result by diffing a shared
+/// on-disk cache (`~/.codex/generated_images`, AGY brain) before/after the run. Two concurrent
+/// draws steal each other's newest file. One global lock keeps the diff safe.
+fn image_job_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 pub(crate) fn validated_png(path: &Path) -> Result<(u32, u32, String)> {
     let mut bytes = fs::read(path).map_err(|e| invalid(&format!("Cannot read image: {e}")))?;
     if image::guess_format(&bytes).ok() != Some(image::ImageFormat::Png) {
@@ -64,32 +72,14 @@ fn codex_cached_images() -> Result<std::collections::HashSet<PathBuf>> {
     Ok(found)
 }
 
-/// Every generated artifact image under AGY's brain cache (`~/.gemini/antigravity-cli/brain/*/`).
-fn agy_cached_images() -> Result<std::collections::HashSet<PathBuf>> {
-    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| invalid("HOME is not set, so the AGY image cache cannot be found"))?;
-    let brain = home.join(".gemini/antigravity-cli/brain");
-    let mut found = std::collections::HashSet::new();
-    let Ok(entries) = fs::read_dir(brain) else {
-        return Ok(found);
-    };
-    for conv in entries.flatten().filter(|e| e.path().is_dir()) {
-        let Ok(files) = fs::read_dir(conv.path()) else {
-            continue;
-        };
-        for file in files.flatten() {
-            let p = file.path();
-            if p.is_file() && p.extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp"))
-            {
-                found.insert(p);
-            }
-        }
-    }
-    Ok(found)
-}
-
 /// Draw with Codex's built-in image tool, attaching `references` as images. Only a PNG this run
 /// created counts: when Codex finishes without drawing, that is an error, never an older image.
 pub(crate) fn generate_via_guarded_codex(model: &str, prompt: &str, references: &[PathBuf], dir: &Path, out: &Path) -> Result<()> {
+    let model = model.trim();
+    if model.is_empty() || model.starts_with("gemini-") || model.starts_with("nano-banana") {
+        return Err(invalid("no Codex model is chosen: set scribbles.model to a Codex model (no hard-coded default)"));
+    }
+    let _guard = image_job_lock().lock().map_err(|_| invalid("image job lock is unavailable"))?;
     let before = codex_cached_images()?;
     let mut cmd = Command::new("codex");
     cmd.args(["exec", "--ephemeral", "--skip-git-repo-check", "--sandbox", "workspace-write", "--model", model, "--cd"])
@@ -116,12 +106,17 @@ pub(crate) fn generate_via_guarded_codex(model: &str, prompt: &str, references: 
     Ok(())
 }
 
-/// Draw with AGY (`gemini-3.8-flash-medium` / Flash) using its built-in `image-generator` subagent,
-/// attaching `references` as reference paths and converting the newly generated artifact to PNG at `out`.
+/// Draw with AGY using its built-in `image-generator` subagent,
+/// attaching `references` as reference paths. The subagent must copy the image to `out`;
+/// this run never falls back to scanning a shared cache, which another job could have filled.
 pub(crate) fn generate_via_guarded_agy(model: &str, prompt: &str, references: &[PathBuf], dir: &Path, out: &Path) -> Result<()> {
-    let before = agy_cached_images()?;
+    let model = model.trim();
+    if model.is_empty() || model == "gpt-6-luna" || model.starts_with("nano-banana") {
+        return Err(invalid("no AGY model is chosen: set scribbles.model to a Gemini Flash model (no hard-coded default)"));
+    }
+    let _guard = image_job_lock().lock().map_err(|_| invalid("image job lock is unavailable"))?;
     let cli = crate::workspace::find_executable("agy").unwrap_or_else(|_| PathBuf::from("agy"));
-    let effective_model = if model.trim().is_empty() || model == "gpt-6-luna" || model.starts_with("nano-banana") { "gemini-3.8-flash-medium" } else { model };
+    let effective_model = model;
     let refs_clause = if references.is_empty() {
         String::new()
     } else {
@@ -145,12 +140,11 @@ pub(crate) fn generate_via_guarded_agy(model: &str, prompt: &str, references: &[
         return Err(invalid(&format!("AGY image execution failed (exit {:?}): {}", output.status.code(), String::from_utf8_lossy(&output.stderr))));
     }
     if !out.is_file() {
-        let mut made: Vec<PathBuf> = agy_cached_images()?.difference(&before).cloned().collect();
-        made.sort_by_key(|p| fs::metadata(p).and_then(|m| m.modified()).ok());
-        let src = made.pop().ok_or_else(|| {
-            invalid(&format!("AGY finished without drawing an image: {}", String::from_utf8_lossy(&output.stdout).lines().last().unwrap_or("no output")))
-        })?;
-        fs::copy(&src, out).map_err(|e| invalid(&format!("Failed to copy AGY image: {e}")))?;
+        return Err(invalid(&format!(
+            "AGY finished without copying an image to {}: {}",
+            out.display(),
+            String::from_utf8_lossy(&output.stdout).lines().last().unwrap_or("no output")
+        )));
     }
     let _ = validated_png(out)?;
     Ok(())
@@ -158,12 +152,17 @@ pub(crate) fn generate_via_guarded_agy(model: &str, prompt: &str, references: &[
 
 /// Draw through the signed-in Google Flow tab (`flow-clip --mode image` via `agent-browser`).
 pub(crate) fn generate_via_flow(prompt: &str, references: &[PathBuf], model: Option<&str>, out: &Path) -> Result<()> {
+    let model = model
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| invalid("no Flow model is chosen: set scribbles.model to a Nano Banana model (no hard-coded default)"))?;
+    if model.starts_with("gemini-") || model == "gpt-6-luna" {
+        return Err(invalid(&format!("model `{model}` does not match provider `flow`: set scribbles.model to a Flow model")));
+    }
     let cli = crate::workspace::find_executable("flow-clip").map_err(|e| EngineError::ExternalTool("flow-clip".into(), e.to_string()))?;
     let mut cmd = Command::new(&cli);
     cmd.args(["--mode", "image", "--prompt", prompt, "--out"]).arg(out);
-    if let Some(m) = model.filter(|s| !s.trim().is_empty() && *s != "gpt-6-luna" && !s.starts_with("gemini-")) {
-        cmd.args(["--model", m]);
-    }
+    cmd.args(["--model", model]);
     for reference in references {
         cmd.arg("--ingredient").arg(reference);
     }
