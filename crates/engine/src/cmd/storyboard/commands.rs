@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use super::{Labels, Page, Storyboard, fail};
 use crate::{EngineError, Result, Session};
 
-const TEMPLATE: &[u8] = include_bytes!("../../../templates/storyboard.designcraft");
+const TEMPLATE: &[u8] = include_bytes!("../../../templates/master-template-storyboard.designcraft");
 const MAX_REFS: usize = 12;
 
 fn bad(msg: &str) -> EngineError {
@@ -139,12 +139,13 @@ pub fn cmd_storyboard_cues(s: &mut Session, p: &Value) -> Result<Value> {
     let structure: Vec<String> =
         sheet["structure_as_printed"].as_array().map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
     let lines = sheet["lines"].as_array().cloned().unwrap_or_default();
-    let mut timings: HashMap<String, (f64, f64)> = HashMap::new();
+    // A repeated line (a chorus sung twice) takes its timings in order: first use, first time.
+    let mut timings: HashMap<String, std::collections::VecDeque<(f64, f64)>> = HashMap::new();
     if let Some(transcript) = p.get("transcript").and_then(Value::as_str) {
         for para in read_json(s, transcript)?["paragraphs"].as_array().into_iter().flatten() {
             let text = para["text"].as_str().unwrap_or_default().trim().to_string();
             let (Some(start), Some(end)) = (para["start"].as_f64(), para["end"].as_f64()) else { continue };
-            timings.entry(text).or_insert((start, end));
+            timings.entry(text).or_default().push_back((start, end));
         }
     }
     let mut sections = Vec::new();
@@ -159,7 +160,7 @@ pub fn cmd_storyboard_cues(s: &mut Session, p: &Value) -> Result<Value> {
             .filter(|l| l["section"].as_str() == Some(section.as_str()))
             .map(|l| {
                 let text = l["text"].as_str().unwrap_or_default();
-                let timing = timings.get(text.trim()).copied();
+                let timing = timings.get_mut(text.trim()).and_then(std::collections::VecDeque::pop_front);
                 json!({"id": l["id"], "text": text, "start": timing.map(|t| t.0), "end": timing.map(|t| t.1)})
             })
             .collect();
@@ -198,6 +199,52 @@ pub(crate) struct CompletionCache {
 
 pub fn cmd_storyboard_check(s: &mut Session, p: &Value) -> Result<Value> {
     completion(s, p)
+}
+
+/// `storyboard.plan`: the pages in the order they are populated, and the next field to fill.
+/// Agents read this instead of searching the document for template placeholders.
+pub fn cmd_storyboard_plan(s: &mut Session, p: &Value) -> Result<Value> {
+    let report = completion(s, p)?;
+    let pages = report["pages"].as_array().cloned().unwrap_or_default();
+    let mut steps = Vec::new();
+    let mut next = Value::Null;
+    for (index, page) in pages.iter().enumerate() {
+        let unfilled = page["unfilled"].as_array().cloned().unwrap_or_default();
+        let first = unfilled.first();
+        let fill = first.map(|field| {
+            json!({
+                "id": "storyboard.set",
+                "params": {"page": page["page"], "label": field["label"], "text": ""}
+            })
+        });
+        if next.is_null()
+            && let Some(field) = first
+        {
+            next = json!({
+                "page": page["page"],
+                "label": field["label"],
+                "text": field["text"],
+                "fill": fill,
+            });
+        }
+        steps.push(json!({
+            "order": index + 1,
+            "page": page["page"],
+            "section": page["section"],
+            "archetype": page["archetype"],
+            "status": page["status"],
+            "unfilled": unfilled,
+            "fill": fill,
+        }));
+    }
+    Ok(json!({
+        "ok": true,
+        "path": report["path"],
+        "page_count": report["page_count"],
+        "complete": report["complete"],
+        "steps": steps,
+        "next": next,
+    }))
 }
 
 pub(crate) fn completion(s: &Session, p: &Value) -> Result<Value> {
@@ -266,13 +313,25 @@ pub fn cmd_storyboard_lyrics(s: &mut Session, p: &Value) -> Result<Value> {
             (Some(a), Some(b)) => format!("{} – {}", clock(a), clock(b)),
             _ => String::new(),
         };
+        let labels = pages[*index].labels();
         let mut fields = serde_json::Map::new();
-        fields.insert("cue".into(), json!(format!("\u{201c}{}\u{201d}", cue["text"].as_str().unwrap_or_default())));
+        // The cue is the section's opening line; the Lyrics page carries every line.
+        let first_line = cue["text"].as_str().unwrap_or_default().split(" / ").next().unwrap_or_default();
+        fields.insert("cue".into(), json!(format!("\u{201c}{first_line}\u{201d}")));
         if !timecode.is_empty() {
             fields.insert("time".into(), json!(timecode));
         }
+        // The scene spread's Lyrics page: the section's transcribed lines, read-only.
+        if labels.contains_key("lyrics_text") {
+            fields.insert("lyrics_text".into(), json!(cue["text"].as_str().unwrap_or_default().replace(" / ", "\n")));
+            if let Some(section) = cue["section"].as_str().filter(|s| !s.is_empty() && labels.contains_key("lyrics_section")) {
+                fields.insert("lyrics_section".into(), json!(section.to_uppercase()));
+            }
+            if !timecode.is_empty() && labels.contains_key("lyrics_time") {
+                fields.insert("lyrics_time".into(), json!(timecode));
+            }
+        }
         let request = json!({"fields": Value::Object(fields), "lock": true});
-        let labels = pages[*index].labels();
         push_scene_steps(s, &stories, &labels, &request, &mut steps)?;
         written.push(json!({"page": index, "scene": n + 1, "section": cue["section"], "cue": cue["text"], "time": timecode}));
     }
@@ -283,7 +342,9 @@ pub fn cmd_storyboard_lyrics(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"ok": true, "path": b.path(), "cues": cues.len(), "written": written}))
 }
 
-/// `storyboard.new`: a new storyboard from the embedded canonical template, plus exported PDF and DeckCraft/PPTX companions.
+/// `storyboard.new`: a new storyboard from the embedded `master-template-storyboard.designcraft`,
+/// plus its exports. The **.pptx is the final** template deliverable (least code maintenance, and a
+/// deck is not casually hand-edited the way an inline PDF is); the .pdf is a read-only preview.
 pub fn cmd_storyboard_new(s: &mut Session, p: &Value) -> Result<Value> {
     let path = doc_path(s, p)?;
     if path.exists() && !p.get("overwrite").and_then(Value::as_bool).unwrap_or(false) {
@@ -418,13 +479,23 @@ pub fn cmd_storyboard_add(s: &mut Session, p: &Value) -> Result<Value> {
             .next_back()
             .ok_or_else(|| bad(&format!("this storyboard has no `{archetype}` page to copy")))?
     };
+    // Storyboard pages are spreads; DesignCraft's `to` and result count single document pages.
     let mut params = json!({"spread": from});
-    match p.get("at").and_then(Value::as_u64) {
-        Some(at) => params["to"] = json!(at),
+    // Default: right after the copied page, so a new scene stays inside the Scenes section.
+    let at = p.get("at").and_then(Value::as_u64).map_or(from + 1, |at| at as usize);
+    match pages.get(at) {
+        Some(pg) => params["to"] = json!(pg.first_page),
         None => params["atEnd"] = json!(true),
     }
     let dup = b.run("layout.pages.duplicateSpread", params)?;
-    let index = dup["page"].as_u64().ok_or_else(|| fail("no page index from duplicateSpread"))? as usize;
+    let first_page = dup["page"].as_u64().ok_or_else(|| fail("no page index from duplicateSpread"))? as usize;
+    let index = b.pages()?.iter().find(|pg| pg.first_page == first_page).map(|pg| pg.index).ok_or_else(|| fail("the new page was not found"))?;
+    // The copy of an inside pair arrives as single-page spreads: join its pages back into one spread.
+    let joins: Vec<(&str, Value)> =
+        (1..pages[from].page_count).map(|k| ("layout.pages.toSpread", json!({"page": first_page + k + 1, "spread": index}))).collect();
+    if !joins.is_empty() {
+        b.run_batch(&joins)?;
+    }
     let pages = b.pages()?;
     let stories = b.frame_stories()?;
     let page = pages.get(index).ok_or_else(|| fail("the new page was not found"))?;
@@ -439,6 +510,16 @@ pub fn cmd_storyboard_add(s: &mut Session, p: &Value) -> Result<Value> {
     {
         steps.push(("object.setFlags", json!({"ids": [id], "locked": false})));
         steps.push(("story.setText", json!({"story": story_id, "text": format!("SCENE {number:02}")})));
+        // The spread's Lyrics and Motion pages carry the same scene number.
+        for (label, text) in [("lyrics_heading", format!("LYRICS / S{number:02}")), ("motion_heading", format!("MOTION / S{number:02}"))] {
+            if let Some(&frame) = labels.get(label)
+                && let Some(&story) = stories.get(&frame)
+            {
+                steps.push(("object.setFlags", json!({"ids": [frame], "locked": false})));
+                steps.push(("story.setText", json!({"story": story, "text": text})));
+                steps.push(("object.setFlags", json!({"ids": [frame], "locked": true})));
+            }
+        }
     }
     if !steps.is_empty() {
         b.run_batch(&steps)?;
@@ -486,7 +567,14 @@ pub fn cmd_storyboard_section(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"ok": true, "section": label, "pages": pages, "path": b.path()}))
 }
 
+/// Renders storyboard page `page` (a spread) as its first Letter page; `designcraft-cli run --page` counts single pages.
 fn render_png(b: &mut Storyboard, page: usize, scale: f64) -> Result<Vec<u8>> {
+    let first = b.pages()?.get(page).map(|pg| pg.first_page).ok_or_else(|| bad(&format!("no page {page}")))?;
+    render_document_png(b, first, scale)
+}
+
+/// Renders one Letter page, 0-based in document page order.
+fn render_document_png(b: &mut Storyboard, page: usize, scale: f64) -> Result<Vec<u8>> {
     let cli = crate::workspace::find_executable("designcraft-cli").map_err(fail)?;
     let tmp = crate::craft_hub::ScopedTempDir::new("magic-sb-page")?;
     let out_path = tmp.path().join("page.png");
@@ -548,17 +636,26 @@ fn render_rail(doc: &Path, scale: f64) -> Result<Value> {
     Ok(json!({"ok": true, "rail": true, "files": files, "modified": source, "cached": fresh}))
 }
 
-fn render_preview_page(doc: &Path, index: usize, scale: f64) -> Result<Value> {
-    let out = preview_dir(doc).join(format!("page-{index}-{}.png", (scale * 100.0).round()));
+/// Renders storyboard page `index` (its first Letter page), or with `document_page` that one Letter
+/// page, into storyboard/.preview; reused until the document changes.
+fn render_preview_page(doc: &Path, index: usize, document_page: Option<usize>, scale: f64) -> Result<Value> {
+    let name = match document_page {
+        Some(n) => format!("doc-{n}-{}.png", (scale * 100.0).round()),
+        None => format!("page-{index}-{}.png", (scale * 100.0).round()),
+    };
+    let out = preview_dir(doc).join(name);
     let source = modified_ms(doc)?;
     let fresh = modified_ms(&out).is_ok_and(|rendered| rendered >= source);
     if !fresh {
         let mut b = Storyboard::open(doc)?;
-        let png = render_png(&mut b, index, scale)?;
+        let png = match document_page {
+            Some(n) => render_document_png(&mut b, n, scale)?,
+            None => render_png(&mut b, index, scale)?,
+        };
         std::fs::create_dir_all(preview_dir(doc))?;
         craft_atomic::atomic_write(&out, &png)?;
     }
-    Ok(json!({"ok": true, "page": index, "out": out, "modified": modified_ms(&out)?, "cached": fresh}))
+    Ok(json!({"ok": true, "page": index, "document_page": document_page, "out": out, "modified": modified_ms(&out)?, "cached": fresh}))
 }
 
 /// `storyboard.thumbnail`: render one page (`out`), all scene thumbnails (`out_dir`), every page
@@ -570,9 +667,14 @@ pub fn cmd_storyboard_thumbnail(s: &mut Session, p: &Value) -> Result<Value> {
         return render_rail(&doc, p.get("scale").and_then(Value::as_f64).unwrap_or(0.16));
     }
     if !has("out") && !has("out_dir") {
-        let index = p.get("page").and_then(Value::as_u64).ok_or_else(|| bad("give `page`, `rail`, `out` or `out_dir`"))?;
+        let document_page = p.get("document_page").and_then(Value::as_u64).and_then(|n| usize::try_from(n).ok());
+        let index = p
+            .get("page")
+            .and_then(Value::as_u64)
+            .or(document_page.map(|_| 0))
+            .ok_or_else(|| bad("give `page`, `document_page`, `rail`, `out` or `out_dir`"))?;
         let index = usize::try_from(index).map_err(|_| bad("`page` is out of range"))?;
-        return render_preview_page(&doc, index, p.get("scale").and_then(Value::as_f64).unwrap_or(0.5));
+        return render_preview_page(&doc, index, document_page, p.get("scale").and_then(Value::as_f64).unwrap_or(0.5));
     }
     let mut b = Storyboard::open(&doc)?;
     let pages = b.pages()?;
@@ -607,54 +709,37 @@ pub fn cmd_storyboard_thumbnail(s: &mut Session, p: &Value) -> Result<Value> {
     }))
 }
 
-/// `storyboard.export`: export the storyboard to PDF (`pdf`), PowerPoint/DeckCraft (`pptx`), and/or PNG spreads (`png_dir`).
+/// The storyboard's DesignCraft Export Layouts and Versions job: a press PDF/X-4 with crop marks,
+/// a screen PDF and one PNG per Letter page, each version in its own folder.
+fn storyboard_export_job() -> Value {
+    json!({
+        "fileName": "{document}",
+        "folders": true,
+        "versions": [
+            {"name": "Print", "format": "pdf", "standard": "x4", "bleed": true, "marks": {"crop": true}},
+            {"name": "Screen", "format": "pdf"},
+            {"name": "Pages", "format": "png", "ppi": 150},
+        ],
+    })
+}
+
+/// `storyboard.export`: DesignCraft's `file.exportBatch` (Export Layouts and Versions) into `dir`
+/// (default `export/` beside the storyboard), with the storyboard job or a saved `preset`.
 pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
-    let mut b = Storyboard::open(&doc_path(s, p)?)?;
-    let mut done = serde_json::Map::new();
-    let mut steps = Vec::new();
-    if let Some(raw_pdf) = p.get("pdf").and_then(Value::as_str).filter(|s| !s.trim().is_empty()) {
-        let pdf = crate::workspace::resolve_workspace_path(s, raw_pdf);
-        if let Some(dir) = pdf.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        steps.push(("file.exportPdf", json!({"path": pdf})));
-        done.insert("pdf".into(), json!(pdf));
+    let path = doc_path(s, p)?;
+    let dir = match p.get("dir").and_then(Value::as_str).filter(|d| !d.trim().is_empty()) {
+        Some(raw) => crate::workspace::resolve_workspace_path(s, raw),
+        None => path.with_file_name("export"),
+    };
+    std::fs::create_dir_all(&dir)?;
+    let mut params = json!({"dir": dir, "dryRun": p.get("dry_run").and_then(Value::as_bool).unwrap_or(false)});
+    match p.get("preset").and_then(Value::as_str).filter(|n| !n.trim().is_empty()) {
+        Some(preset) => params["preset"] = json!(preset),
+        None => params["job"] = storyboard_export_job(),
     }
-    if let Some(raw_pptx) = p.get("pptx").or_else(|| p.get("deck")).and_then(Value::as_str).filter(|s| !s.trim().is_empty()) {
-        let pptx = crate::workspace::resolve_workspace_path(s, raw_pptx);
-        if let Some(dir) = pptx.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        steps.push(("file.exportPptx", json!({"path": pptx})));
-        done.insert("pptx".into(), json!(pptx));
-    }
-    if !steps.is_empty() {
-        b.run_batch(&steps)?;
-    }
-    if let Some(raw_dir) = p.get("png_dir").and_then(Value::as_str).filter(|s| !s.trim().is_empty()) {
-        let dir = crate::workspace::resolve_workspace_path(s, raw_dir);
-        std::fs::create_dir_all(&dir)?;
-        let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(1.0);
-        let cli = crate::workspace::find_executable("designcraft-cli").map_err(fail)?;
-        let out = std::process::Command::new(&cli)
-            .arg("run")
-            .arg("--in")
-            .arg(b.work_path())
-            .arg("--scale")
-            .arg(scale.to_string())
-            .arg("--all-pages")
-            .arg(&dir)
-            .output()
-            .map_err(fail)?;
-        if !out.status.success() {
-            return Err(fail(String::from_utf8_lossy(&out.stderr).trim()));
-        }
-        done.insert("png_dir".into(), json!(dir));
-    }
-    if done.is_empty() {
-        return Err(bad("give `pdf`, `pptx` and/or `png_dir`"));
-    }
-    Ok(json!({"ok": true, "exported": done}))
+    let mut b = Storyboard::open(&path)?;
+    let out = b.run("file.exportBatch", params)?;
+    Ok(json!({"ok": true, "dir": dir, "files": out["files"], "warnings": out["warnings"]}))
 }
 
 /// Open the canonical storyboard in the installed DesignCraft editor with live control.

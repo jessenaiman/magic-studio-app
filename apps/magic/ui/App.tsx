@@ -39,7 +39,12 @@ export const App: React.FC = () => {
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | undefined>(undefined);
   const [assetsOpen, setAssetsOpen] = useState<boolean>(false);
-  const [assetsPinned, setAssetsPinned] = useState<boolean>(false);
+  const [assetsPinned, setAssetsPinned] = useState<boolean>(() => {
+    try { return window.localStorage.getItem("magic.assetsPinned") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem("magic.assetsPinned", assetsPinned ? "1" : "0"); } catch { /* private mode */ }
+  }, [assetsPinned]);
   const [data, setData] = useState<WorkshopData | null>(null);
   const [toastMsg, setToastMsg] = useState<string>("");
   const [toastVisible, setToastVisible] = useState<boolean>(false);
@@ -109,10 +114,18 @@ export const App: React.FC = () => {
     } catch (error) { showToast(`Could not close the project: ${error}`); }
   };
 
-  const launchCraftApp = async (app: string, label: string) => {
+  const launchCraftApp = async (app: string, label: string, path?: string) => {
     try {
-      await executeCommand("workspace.open", { app });
-      showToast(`Launched ${label}`);
+      if (app === "effectcraft" && path) {
+        await executeCommand("animation.open", { path });
+        showToast(`Opened lettering in EffectCraft`);
+      } else if (app === "designcraft" && path) {
+        await executeCommand("storyboard.open", { path, _expected_project: projectPath });
+        showToast(`Opened storyboard in DesignCraft`);
+      } else {
+        await executeCommand("workspace.open", { ...(path ? { path } : {}), app });
+        showToast(`Launched ${label}`);
+      }
     } catch (error) {
       showToast(`Could not launch ${label}: ${error}`);
     }
@@ -288,11 +301,11 @@ export const App: React.FC = () => {
           {(
             [
               ["storyboard", "Storyboard"],
+              ["animation", "Animations"],
               ["design", "Lyrics"],
-              ["motion", "Motion"],
-              ["gallery", "Gallery"],
-              ["animation", "Animation"],
+              ["motion", "Motion Design"],
               ["studio", "Studio"],
+              ["gallery", "Gallery"],
               ["mayhem", "Mayhem"],
             ] as Array<[ViewMode, string]>
           ).filter(([id]) => projectPath || id === "gallery" || id === "mayhem").map(([id, label]) => (
@@ -377,7 +390,14 @@ export const App: React.FC = () => {
 <button
               id="dock-designcraft"
               className="craft-dock-btn craft-design"
-              onClick={() => void launchCraftApp("designcraft", "DesignCraft")}
+              onClick={() => {
+                if (projectPath) {
+                  const storyboardPath = `${projectPath.replace(/[/\\][^/\\]+$/, "")}/storyboard.designcraft`;
+                  void launchCraftApp("designcraft", "DesignCraft", storyboardPath);
+                } else {
+                  void launchCraftApp("designcraft", "DesignCraft");
+                }
+              }}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
                 <path d="M12 19l7-7 3 3-7 7-3-3z" />
@@ -389,7 +409,14 @@ export const App: React.FC = () => {
 <button
               id="dock-effectcraft"
               className="craft-dock-btn craft-effect"
-              onClick={() => void launchCraftApp("effectcraft", "EffectCraft")}
+              onClick={() => {
+                if (projectPath) {
+                  const ecproj = `${projectPath.replace(/[/\\][^/\\]+$/, "")}/lettering/lyrics.ecproj`;
+                  void launchCraftApp("effectcraft", "EffectCraft", ecproj);
+                } else {
+                  void launchCraftApp("effectcraft", "EffectCraft");
+                }
+              }}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
                 <path d="M12 3l2.1 5.4L19.5 10.5l-5.4 2.1L12 18l-2.1-5.4L4.5 10.5l5.4-2.1L12 3z" />
@@ -457,11 +484,9 @@ export const App: React.FC = () => {
             }
           }}
           onTogglePin={() => {
-            setAssetsPinned((p) => {
-              const next = !p;
-              if (next) setAssetsOpen(true);
-              return next;
-            });
+            const next = !assetsPinned;
+            setAssetsPinned(next);
+            setAssetsOpen(next);
           }}
           selectedCharacterId={selectedCharacterId}
           onSelectCharacter={(charId, goAnim) => {
@@ -513,7 +538,10 @@ export const App: React.FC = () => {
             onNavigate={navigateTo}
             onToast={showToast}
           />
-        ) : (
+        ) : null}
+        {/* Keep the storyboard mounted across view switches: remounting it reloads DesignCraft
+            mid-write and can flash an empty page list. */}
+        {projectPath && view !== "home" && view !== "gallery" && view !== "mayhem" && (
           <PreservedStoryboard
             key={`storyboard-${projectPath}`}
             active={view === "storyboard"}

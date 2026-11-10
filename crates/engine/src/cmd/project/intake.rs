@@ -52,7 +52,7 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
     if !sb.is_file() {
         let _ = crate::cmd::storyboard::cmd_storyboard_new(s, &json!({"path": sb, "overwrite": false}));
     } else {
-        let _ = crate::cmd::storyboard::cmd_storyboard_export(s, &json!({"path": sb, "pdf": dir.join("storyboard.pdf"), "pptx": dir.join("storyboard.pptx")}));
+        let _ = crate::cmd::storyboard::cmd_storyboard_export(s, &json!({"path": sb}));
     }
     let mut status = workshop_status(s)?;
     status["audio"] = json!(audio);

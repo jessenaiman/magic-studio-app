@@ -2,6 +2,7 @@
 //!
 //! Tauri owns the main thread, so each eframe app runs on a thread of its own, which stays
 //! alive between windows because eframe reuses its event loop per thread.
+use designcraft_ui_egui::{ControlRequest as DesignControlRequest, DesignApp};
 use effectcraft_ui_egui::{ControlRequest as EffectControlRequest, EffectcraftApp};
 use filmcraft_ui_egui::{ControlRequest, FilmcraftApp};
 use serde_json::{Value, json};
@@ -37,6 +38,19 @@ struct EffectStudio {
 }
 
 static EFFECT_STUDIO: OnceLock<EffectStudio> = OnceLock::new();
+
+struct DesignLive {
+    path: PathBuf,
+    control: Sender<DesignControlRequest>,
+    ctx: eframe::egui::Context,
+}
+
+struct DesignStudio {
+    open: Sender<(PathBuf, Ready)>,
+    live: Mutex<Option<DesignLive>>,
+}
+
+static DESIGN_STUDIO: OnceLock<DesignStudio> = OnceLock::new();
 
 fn studio() -> &'static Studio {
     STUDIO.get_or_init(|| {
@@ -262,4 +276,122 @@ pub(super) fn control_effect(params: &Value) -> Result<Value, String> {
     let slot = effect_studio().live.lock().map_err(|e| e.to_string())?;
     let live = slot.as_ref().ok_or("EffectCraft is not open; run animation.open or character.open first")?;
     request_effect(live, method, params.get("params").cloned().unwrap_or_else(|| json!({})))
+}
+
+fn design_studio() -> &'static DesignStudio {
+    DESIGN_STUDIO.get_or_init(|| {
+        let (open, requests) = mpsc::channel::<(PathBuf, Ready)>();
+        let _ = std::thread::Builder::new().name("designcraft".into()).spawn(move || {
+            while let Ok((path, ready)) = requests.recv() {
+                run_design(path, ready);
+            }
+        });
+        DesignStudio { open, live: Mutex::new(None) }
+    })
+}
+
+fn set_design_live(live: Option<DesignLive>) {
+    if let Ok(mut slot) = design_studio().live.lock() {
+        *slot = live;
+    }
+}
+
+/// The host window's `eframe::App`: `DesignApp` is the editor, this forwards each frame to it.
+struct DesignHost {
+    app: DesignApp,
+}
+
+impl eframe::App for DesignHost {
+    fn logic(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
+        self.app.logic(ctx);
+    }
+    fn raw_input_hook(&mut self, ctx: &eframe::egui::Context, raw: &mut eframe::egui::RawInput) {
+        self.app.raw_input_hook(ctx, raw);
+    }
+    fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame) {
+        self.app.ui(ui);
+        self.app.show_file_dialogs(Some(&*frame));
+    }
+    fn on_exit(&mut self) {
+        let _ = self.app.session.execute("file.save", &json!({}));
+    }
+}
+
+/// Runs DesignCraft (`designcraft_ui_egui::DesignApp`) on this thread until its window closes.
+fn run_design(path: PathBuf, ready: Ready) {
+    let (control, requests) = mpsc::channel();
+    let options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default().with_title("DesignCraft").with_inner_size([1600.0, 980.0]).with_drag_and_drop(true),
+        event_loop_builder: Some(Box::new(|builder| {
+            #[cfg(target_os = "linux")]
+            {
+                use winit::platform::x11::EventLoopBuilderExtX11;
+                EventLoopBuilderExtX11::with_any_thread(builder, true);
+                if std::env::var_os("DISPLAY").is_some() {
+                    EventLoopBuilderExtX11::with_x11(builder);
+                }
+            }
+        })),
+        ..Default::default()
+    };
+    let created = ready.clone();
+    let opened = path.clone();
+    let result = eframe::run_native(
+        "DesignCraft",
+        options,
+        Box::new(move |cc| {
+            let mut app = DesignApp::new(designcraft_engine::Session::new(), designcraft_ui_egui::Services::default()).with_control(requests);
+            app.open_file("file.open", json!({ "path": &opened })).map_err(|e| e.to_string())?;
+            set_design_live(Some(DesignLive { path: opened, control, ctx: cc.egui_ctx.clone() }));
+            let _ = created.send(Ok(()));
+            Ok(Box::new(DesignHost { app }))
+        }),
+    );
+    set_design_live(None);
+    if let Err(error) = result {
+        let _ = ready.send(Err(error.to_string()));
+    }
+}
+
+fn request_design(live: &DesignLive, method: &str, params: Value) -> Result<Value, String> {
+    let (request, reply) = DesignControlRequest::new(method, params);
+    live.control.send(request).map_err(|_| "DesignCraft has closed".to_string())?;
+    live.ctx.request_repaint();
+    reply.recv_timeout(Duration::from_secs(60)).map_err(|_| "DesignCraft did not answer within 60 seconds".to_string())
+}
+
+/// Shows `path` in the in-process `DesignApp` (`designcraft-ui-egui`), opening its window if it is not open.
+pub(super) fn open_design(path: PathBuf) -> Result<Value, String> {
+    let studio = design_studio();
+    {
+        let mut slot = studio.live.lock().map_err(|e| e.to_string())?;
+        if let Some(live) = slot.as_mut() {
+            if live.path != path {
+                request_design(live, "engine.execute", json!({"command": "file.open", "params": {"path": path}}))?;
+                live.path = path.clone();
+            }
+            request_design(live, "ui.focus", json!({}))?;
+            return Ok(json!({"ok": true, "app": "designcraft", "file": path, "window": "focused"}));
+        }
+    }
+    let (ready, answer) = mpsc::channel();
+    studio.open.send((path.clone(), ready)).map_err(|_| "DesignCraft could not start".to_string())?;
+    answer.recv().map_err(|_| "DesignCraft stopped before its window opened".to_string())??;
+    Ok(json!({"ok": true, "app": "designcraft", "file": path, "window": "opened"}))
+}
+
+/// `design.open {path}`: the project's storyboard in the in-process DesignCraft.
+pub(super) fn open_design_path(params: &Value) -> Result<Value, String> {
+    super::only_keys(params, "design.open", &["path"])?;
+    let path = params["path"].as_str().ok_or("design.open needs path")?;
+    open_design(PathBuf::from(path))
+}
+
+/// `ui.designcraft {method, params?}`: any DesignCraft control method, on the open in-process window.
+pub(super) fn control_design(params: &Value) -> Result<Value, String> {
+    super::only_keys(params, "ui.designcraft", &["method", "params"])?;
+    let method = params["method"].as_str().ok_or("ui.designcraft needs a method")?;
+    let slot = design_studio().live.lock().map_err(|e| e.to_string())?;
+    let live = slot.as_ref().ok_or("DesignCraft is not open; run design.open first")?;
+    request_design(live, method, params.get("params").cloned().unwrap_or_else(|| json!({})))
 }

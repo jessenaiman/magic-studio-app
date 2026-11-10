@@ -1255,6 +1255,12 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             crate::cmd::storyboard::cmd_storyboard_check
         ),
         query!(
+            "storyboard.plan",
+            "Storyboard Population Plan: Ordered Pages and the Next Field to Fill",
+            "{\"path\":\"optional storyboard.designcraft\"}",
+            crate::cmd::storyboard::cmd_storyboard_plan
+        ),
+        query!(
             "storyboard.pages",
             "Storyboard Page Summary; One Page in Full With `page`",
             "{\"path\":\"optional storyboard.designcraft\",\"page\":\"optional index: that page's slots\",\"label\":\"optional slot name on `page`\",\"full\":\"true: every page's slots\"}",
@@ -1304,8 +1310,8 @@ fn specs_storyboard() -> Vec<CommandSpec> {
         ),
         query!(
             "storyboard.export",
-            "Export Storyboard to PDF, DeckCraft/PPTX, and/or PNG Spreads",
-            "{\"path\":\"optional\",\"pdf\":\"/absolute/storyboard.pdf\",\"pptx\":\"/absolute/storyboard.pptx\",\"png_dir\":\"/absolute/dir\",\"scale\":1.0}",
+            "Export Storyboard (DesignCraft Export Layouts and Versions: print PDF/X-4, screen PDF, PNG per page)",
+            "{\"path\":\"optional\",\"dir\":\"optional /absolute/dir; default export/ beside the storyboard\",\"preset\":\"optional saved DesignCraft export preset\",\"dry_run\":false}",
             crate::cmd::storyboard::cmd_storyboard_export
         ),
     ]

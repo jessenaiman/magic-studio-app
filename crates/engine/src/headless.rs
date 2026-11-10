@@ -181,8 +181,5 @@ pub fn dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool, per
     let _lock = pre_lock.or_else(|| if mutating_cli { s.project_path.as_deref().and_then(crate::project_lock::for_project) } else { None });
     auto_load_asset(s, id, &params);
     let out = s.execute(id, params).map_err(|e| e.to_string())?;
-    if !is_dry && crate::find_command(id).is_some_and(|c| c.journal) && s.edits_since_save > 0 && s.project_path.is_some() {
-        crate::project::write_project_file(s).map_err(|e| e.to_string())?;
-    }
     Ok(out)
 }

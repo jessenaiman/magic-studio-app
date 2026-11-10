@@ -38,7 +38,7 @@ fn run(app: &tauri::AppHandle, command: &str) -> Result<Value, String> {
 }
 
 /// Runs what `chord` is bound to. `typing`: a text field has the keyboard.
-fn press(app: &tauri::AppHandle, chord: &str, typing: bool) -> Result<Value, String> {
+pub(crate) fn press(app: &tauri::AppHandle, chord: &str, typing: bool) -> Result<Value, String> {
     let chord = Chord::parse(chord).map_err(|e| format!("invalid chord: {e:?}"))?;
     match keymap().lookup(&chord, false, &Active { typing, ..Active::NONE }) {
         Lookup::Run(command) => {
@@ -60,4 +60,9 @@ pub(super) fn control(app: &tauri::AppHandle, params: &Value) -> Result<Value, S
     super::only_keys(params, "ui.keymap.press", &["chord", "typing"])?;
     let chord = params["chord"].as_str().ok_or("ui.keymap.press needs a chord")?;
     press(app, chord, params["typing"] == true)
+}
+
+/// Get all bindables from the keymap for global shortcut registration.
+pub(crate) fn all_bindables() -> Vec<Bindable> {
+    keymap().catalog().into_iter().cloned().collect()
 }

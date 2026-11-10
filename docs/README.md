@@ -20,6 +20,9 @@ Tauri v2 facts that shape this project (versions are in `apps/magic/Cargo.toml`;
 | Make a song video | [Production guide](../apps/magic/agent.md) |
 | Run or build the app | [Tauri setup guide](../apps/magic/README.md) |
 | Understand how the pieces fit | [Architecture](architecture.md) |
+| Read Craft documents without the apps (read-only) | [craft-doc (verbatim, storytold/craft-libs)](craft-doc.md) |
+| Store settings (config.toml / ui.ron / cache / data) | [settings-storage (verbatim, storytold/craft-libs)](settings-storage.md) |
+| Lay out menus, shortcuts, quit (craft-menu / craft-keymap / craft-quit) | [craft-menu (verbatim, storytold/craft-libs)](craft-menu.md) |
 | Browse Rust modules, types, and source | [Build the Rust API reference](RUSTDOC.md) |
 | Use CLI or MCP commands | [Control protocol](control-protocol.md), [command architecture](../apps/magic/MAGIC.md) and [Magic skill](../apps/magic/SKILL.md) |
 | Contribute safely | [Architecture layers and rules](architecture.md) |

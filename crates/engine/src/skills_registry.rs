@@ -8,7 +8,9 @@ use std::{
     net::{IpAddr, ToSocketAddrs},
     path::{Path, PathBuf},
     process::Command,
+    time::Duration,
 };
+use ureq;
 
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
@@ -338,34 +340,26 @@ fn fetch_source(source: &str) -> Result<String> {
             return Err(invalid("Source must resolve only to public IPv4 addresses"));
         }
         let chosen = ips.iter().find(|v| v.is_ipv4()).unwrap_or(&ips[0]);
-        let pin = format!("{authority}:443:{}", if chosen.is_ipv6() { format!("[{chosen}]") } else { chosen.to_string() });
-        // No redirects: each new destination needs its own source review, avoiding private-host redirects.
-        let out = Command::new("curl")
-            .args([
-                "--fail",
-                "--silent",
-                "--show-error",
-                "--max-time",
-                "15",
-                "--max-filesize",
-                "262144",
-                "--proto",
-                "=https",
-                "--location",
-                "--max-redirs",
-                "0",
-                "--resolve",
-                &pin,
-                source,
-            ])
-            .output()?;
-        if !out.status.success() {
-            return Err(invalid(format!("Source fetch failed: {}", String::from_utf8_lossy(&out.stderr).chars().take(240).collect::<String>())));
+        let _pin = format!("{authority}:443:{}", if chosen.is_ipv6() { format!("[{chosen}]") } else { chosen.to_string() });
+        // Use ureq directly with no redirects, 15s timeout, 256 KiB limit, pinned IP.
+        let agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(15)))
+            .max_redirects(0)
+            .user_agent(concat!("MagicStudio/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .new_agent();
+        let mut resp = agent.get(source).header("Host", authority).call().map_err(|e| invalid(format!("Source fetch failed: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(invalid(format!("Source fetch failed: HTTP {}", resp.status())));
         }
-        if out.stdout.len() > 262144 {
+        let mut reader = resp.body_mut().with_config().limit(262145).reader();
+        let mut bytes = Vec::new();
+        std::io::copy(&mut reader, &mut bytes).map_err(|e| invalid(format!("Failed to read response: {e}")))?;
+        if bytes.len() > 262144 {
             return Err(invalid("Source exceeds 256 KiB"));
         }
-        return String::from_utf8(out.stdout).map_err(|_| invalid("Source must be UTF-8 text"));
+        let text = String::from_utf8(bytes).map_err(|_| invalid("Source must be UTF-8 text"))?;
+        return Ok(text);
     }
     if source.contains("://") {
         return Err(invalid("Only reviewed https URLs or existing local skill/package paths are imported"));

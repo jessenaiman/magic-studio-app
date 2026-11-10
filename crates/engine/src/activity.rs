@@ -1,4 +1,5 @@
 //! Three recent root actions per canonical project. Polling never appends activity.
+use craft_settings::paths::data_dir;
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
@@ -36,10 +37,7 @@ fn now() -> u128 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros()).unwrap_or(0)
 }
 fn path() -> Option<PathBuf> {
-    std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))
-        .map(|p| p.join("magic/activity.jsonl"))
+    data_dir("magic").map(|p| p.join("activity.jsonl"))
 }
 /// Saves, generations, keyframe edits, errors and page selection reports, kept apart from the
 /// three-root journal so UI clicks cannot evict them.

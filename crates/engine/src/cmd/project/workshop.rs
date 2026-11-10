@@ -141,7 +141,11 @@ pub(crate) fn files_in(dir: &Path, only: Option<&[&str]>) -> Vec<PathBuf> {
 }
 
 pub(crate) fn transcript_files(dir: &Path) -> Vec<PathBuf> {
-    files_in(dir, Some(&["json"])).into_iter().filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".transcript.json"))).collect()
+    // `workshop.import_transcript` writes `transcript.json`; older projects name it `<song>.transcript.json`.
+    files_in(dir, Some(&["json"]))
+        .into_iter()
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n == "transcript.json" || n.ends_with(".transcript.json")))
+        .collect()
 }
 
 /// Storyboard panels, in order: `storyboard/panel-NN.`.

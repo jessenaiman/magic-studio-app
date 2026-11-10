@@ -184,7 +184,6 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
   const totalCount = characterCards.length + backgroundCards.length;
   const visible = tab === "backgrounds" ? backgroundCards : characterCards;
   const activeCharId = selectedCharacterId || characterCards[0]?.charId || "";
-  const activeCard = characterCards.find((c) => c.charId === activeCharId || c.id === activeCharId);
 
   const run = async (fn: () => Promise<void>) => {
     if (busy) return;
@@ -291,13 +290,15 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
         <button
           id="stage-assets-pin"
           type="button"
-          className={`${pinned ? "start" : "ghost"} app-assets-pin`}
+          className={`app-assets-pin ${pinned ? "pinned" : "ghost"}`}
           aria-pressed={pinned}
           aria-label={pinned ? "Unpin Asset Drawer" : "Pin Asset Drawer open"}
           onClick={onTogglePin}
           title={pinned ? "Unpin Asset Drawer (collapse when switching views)" : "Pin Asset Drawer open across all views"}
         >
-          📌
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path d="M9.6 1.4 14.6 6.4l-2.1.5-3.1 3.1.2 2.3-1.2 1.2-2.5-2.5L3 13.8l-1-1 2.8-2.9L2.3 7.4 3.5 6.2l2.3.2 3.1-3.1z" fill="currentColor" />
+          </svg>
         </button>
 
         <div className="app-assets-tabs" role="tablist" aria-label="Asset categories">
@@ -325,27 +326,6 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
           </button>
         </div>
 
-        {open && characterCards.length > 0 && (
-          <div className="app-assets-active-char">
-            <span
-              id="motion-status-dot"
-              className={`dot ${activeCard?.isReady ? "ok" : "warn"}`}
-              title={activeCard?.badge || "Active character"}
-            />
-            <select
-              id="motion-object"
-              aria-label="Character"
-              value={activeCharId}
-              onChange={(e) => onSelectCharacter(e.target.value, view === "animation")}
-            >
-              {characterCards.map((c) => (
-                <option key={c.id} value={c.charId || c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
 
         <div className="app-assets-actions">
           {open && (
@@ -356,7 +336,7 @@ export const StageAssets: React.FC<StageAssetsProps> = ({
               title="Mark parts, cut layers, or rebuild rig"
               onClick={handlePrepareArtwork}
             >
-              ✂ Prepare artwork…
+              Prepare artwork
             </button>
           )}
           <button

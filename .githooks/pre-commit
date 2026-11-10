@@ -6,6 +6,11 @@
 
 set -e
 
+# Duplicate TOML keys and syntax: Cargo only reports a manifest when it parses it,
+# so check every tracked TOML file before the commit reaches a build.
+echo "Checking TOML (duplicate keys and syntax)..."
+python3 scripts/check-toml.py
+
 # Only Rust-affecting files care about rustfmt; other commits skip entirely.
 if git diff --cached --name-only \
     | grep -qE '\.(rs|toml|lock)$|^xtask/|^crates/|^apps/magic.*\.rs$'; then

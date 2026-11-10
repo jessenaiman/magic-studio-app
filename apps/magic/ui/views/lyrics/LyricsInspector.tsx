@@ -156,6 +156,11 @@ export const LyricsInspector: React.FC<LyricsInspectorProps> = ({
     defaultMotionSpec(ROTATION),
   );
   const [motionBusy, setMotionBusy] = useState(false);
+  // Motion stays closed in Lyrics unless the user opens it; it follows the tab when the tab changes.
+  const [motionOpen, setMotionOpen] = useState(mode === "motion");
+  useEffect(() => {
+    setMotionOpen(mode === "motion");
+  }, [mode]);
 
   const wordIdsJoined = (item?.word_ids ?? []).join("|");
   useEffect(() => {
@@ -265,9 +270,6 @@ export const LyricsInspector: React.FC<LyricsInspectorProps> = ({
   }, []);
 
   const currentSbPage = sbPages.find((p) => p.page === selectedSbPage) ?? sbPages[0];
-  const textSlots = (currentSbPage?.slots ?? []).filter(
-    (sl) => sl.kind === "text" || typeof sl.text === "string",
-  );
 
   const rotateVal = finite(item?.rotate, 0);
   const skewVal = finite(item?.skew, 0);
@@ -294,7 +296,7 @@ export const LyricsInspector: React.FC<LyricsInspectorProps> = ({
         data-look="cutout"
         open
       >
-        <summary className="panel-head">
+        <summary id="lyrics-transform-section-summary" className="panel-head">
           <span className="motion-section-icon" aria-hidden="true">
             <svg viewBox="0 0 16 16">
               <path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" />
@@ -509,7 +511,7 @@ export const LyricsInspector: React.FC<LyricsInspectorProps> = ({
         data-look="chalk"
         open={mode === "design"}
       >
-        <summary className="panel-head">
+        <summary id="lyrics-type-section-summary" className="panel-head">
           <span className="motion-section-icon" aria-hidden="true">
             <svg viewBox="0 0 16 16">
               <path d="M3 3h10v2H9v8H7V5H3V3z" />
@@ -663,9 +665,10 @@ export const LyricsInspector: React.FC<LyricsInspectorProps> = ({
         id="lyrics-motion-section"
         className="panel motion-section"
         data-look="motion"
-        open={mode === "motion" || true}
+        open={motionOpen}
+        onToggle={(event) => setMotionOpen(event.currentTarget.open)}
       >
-        <summary className="panel-head">
+        <summary id="lyrics-motion-section-summary" className="panel-head">
           <span className="motion-section-icon" aria-hidden="true">
             <svg viewBox="0 0 16 16">
               <path d="M2 12c3-6 5-6 8 0s5 0 4-6" />
@@ -858,7 +861,7 @@ export const LyricsInspector: React.FC<LyricsInspectorProps> = ({
         className="panel motion-section"
         data-look="chalk"
       >
-        <summary className="panel-head">
+        <summary id="lyrics-draw-section-summary" className="panel-head">
           <span className="motion-section-icon" aria-hidden="true">
             <svg viewBox="0 0 16 16">
               <path d="M12.1 2.3a1 1 0 0 1 1.4 0l.2.2a1 1 0 0 1 0 1.4L5.5 12.1 2 13l.9-3.5L11.1 1.3z" />
@@ -968,7 +971,7 @@ export const LyricsInspector: React.FC<LyricsInspectorProps> = ({
         className="panel motion-section"
         data-look="cutout"
       >
-        <summary className="panel-head">
+        <summary id="lyrics-storyboard-section-summary" className="panel-head">
           <span className="motion-section-icon" aria-hidden="true">
             <svg viewBox="0 0 16 16">
               <rect x="2" y="3" width="12" height="10" rx="1.5" />
@@ -1006,26 +1009,7 @@ export const LyricsInspector: React.FC<LyricsInspectorProps> = ({
               DesignCraft ↗
             </button>
           </div>
-          {textSlots.slice(0, 6).map((slot, i) => (
-            <label
-              key={slot.id || slot.label || i}
-              className="lyrics-sb-slot"
-            >
-              <span>{(slot.label || slot.id || `Slot ${i + 1}`).toUpperCase()}</span>
-              <input
-                type="text"
-                defaultValue={slot.text ?? ""}
-                onBlur={(e) => {
-                  if (!currentSbPage || !slot.label) return;
-                  void executeCommand("storyboard.slot.set", {
-                    page: currentSbPage.page,
-                    slot: slot.label,
-                    text: e.target.value,
-                  }).catch((err) => onToast(String(err)));
-                }}
-              />
-            </label>
-          ))}
+          <p className="muted lyrics-sb-note">Read-only context. Edit these frames in DesignCraft.</p>
         </div>
       </details>
     </aside>

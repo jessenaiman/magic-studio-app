@@ -5,16 +5,18 @@
 //! builds exact CLI argument vectors, and runs subprocess tools. Pure path logic:
 //! no session state is mutated here.
 
+use craft_settings::paths::{Location, Portable, Probe, data_dir, resolve};
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
 use crate::{EngineError, Result};
 
-/// Return the canonical current Magic Studio workspace, independent of the caller working directory.
+const PORTABLE: Portable = Portable::DEFAULT;
+
 fn control_token_file() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
-    Some(base.join("magic/control-token"))
+    let resolved = resolve("magic", &PORTABLE, &Location::Auto, &Probe::default());
+    resolved.dir.map(|p| p.join("control-token"))
 }
 
 /// The control token: `MAGIC_CONTROL_TOKEN`, else the private token file the desktop creates.
@@ -108,10 +110,7 @@ pub fn resolve_workspace_path(s: &crate::Session, raw: &str) -> PathBuf {
 
 /// The user's portable data directory; relative XDG values are not valid roots.
 pub(crate) fn user_data_dir() -> Option<PathBuf> {
-    std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-        .or_else(|| std::env::var_os("HOME").map(PathBuf::from).filter(|path| path.is_absolute()).map(|home| home.join(".local/share")))
+    data_dir("magic")
 }
 
 /// Resolve a program on the caller's PATH before handing it to a background service.

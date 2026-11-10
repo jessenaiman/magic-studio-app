@@ -46,10 +46,10 @@ Rules: every workspace crate has a layer; edges must strictly go down (`dl < l`)
 ├─ song: SongMetadata, song_audio, video_target, video_project_path
 ├─ project_mode: None (song) | Some("animation")
 ├─ assets: map id→Asset, project_assets: Vec<ProjectAsset>
-├─ docs: Vec<DocState> (lyric design, storyboard, cast, film)
-└─ edits_since_save, project_saves (atomic write via write_project_file)
+├─ docs: Vec<DocState> (lyric design, storyboard, cast, film) — each owns dirty+stamp
+└─ save: Session::has_unsaved_changes() + save_all() in session/save.rs (single SRP; no counters, no autosave)
 ```
-Files written only on save. `link_watch.rs` reloads external changes. Undo = `session/undo.rs` snapshots.
+Files written only on save (`Session::save_all()`, called by `project.save` / Cmd+S). `link_watch.rs` reloads external changes. `craft-doc` is read-only inspection (see [craft-doc.md](craft-doc.md) verbatim) — never a save path. Undo = `session/undo.rs` snapshots.
 
 ## 3. Command system (`crates/engine/src/commands.rs`)
 
@@ -81,3 +81,40 @@ pub struct CommandSpec {
 - `magic-cli --bridge 127.0.0.1:9876 mcp`: Craft-style `rmcp` tools; no local session or automatic fallback in bridge mode. Omit `--bridge` for explicit headless operation.
 - The separate browser HTTP UI server and old Unix-socket transport have been removed; restored workspaces use the native Tauri adapter.
 - See [control-protocol.md](control-protocol.md) for implemented UI operations and the canonical launch instructions.
+
+## 6. Tauri Plugin Surface (Issue #116)
+
+Every official Tauri 2+ plugin is either wired or explicitly declined. Source of truth: <https://v2.tauri.app/plugin/> (28 official plugins + torch/system-tray/window-customization).
+
+| Plugin | Status | Reason / Notes |
+|--------|--------|----------------|
+| clipboard-manager | ✅ Wired | Full HTML read/write/clear; capability granted |
+| dialog | ✅ Wired | Via `craft-dialogs` (shared library), not Tauri plugin |
+| fs | ✅ Wired | `$APPDATA/**` scope + persisted-scope; project paths never need webview fs |
+| http | ✅ Declined | Rust-side `ureq` model; webview `deny` at `api.openai.com`/`api.storyteller.ai`; loopback-only `allow` |
+| log | ✅ Wired | File logging to Tauri log dir |
+| opener | ✅ Wired | Capability granted; **audit needed**: blanket `opener:default` opens any path/URL with any app |
+| os | ✅ Wired | `os-info.ts` helper |
+| persisted-scope | ✅ Wired | FS scope persistence for project assets |
+| positioner | ✅ Wired | `toggleWindowSnap` (#112) — false-success read-back to fix |
+| single-instance | ✅ Wired | ArtCraft missed this; real win for studio app |
+| window-state | ✅ Wired | Layout only; prefs stay in `config.toml` per #111 §3 |
+| notification | ✅ Wired | Helpers wired to `video.assemble/export`, `image.generate`, `scribbles.*` completions |
+| global-shortcut | ✅ Wired | Craft-keymap bindings registered as system hotkeys on startup |
+| process | ❌ Declined | `config.toml` sole authority; lifecycle gate handles quit/restart via `craft-quit` |
+| shell | ❌ Declined | CraftHub/opener cover execution needs; zero grants = dead weight |
+| store | ❌ Declined | **Tauri `tauri-plugin-store`** (key-value for webview) not needed: settings → `config.toml` via `craft_settings::SettingsStore` (sole authority #111 §3); document state → `.magic` via `Session`; window/UI state → `tauri-plugin-window-state` + `tauri-plugin-persisted-scope` |
+| websocket | ❌ Declined | `--control` TCP (port 9876) covers loopback needs; no concrete WebSocket use case |
+| upload | ✅ Wired | Progress-tracked render/export downloads via `tauri-plugin-upload` |
+| localhost | ❌ Declined | HyperFrames retired; `protocol-asset` covers local media |
+| deep-link | ✅ Wired | `.magic` file association + `storyteller://` URL scheme for guided project intake |
+| updater | ✅ Wired | In-app updates via `tauri-plugin-updater`; required before distribution |
+| cli | ❌ Declined | `clap 4.6` direct is the shared `magic-cli` convention |
+| autostart | ❌ Declined | Studio app is user-launched |
+| sql | ❌ Declined | Documents are files (`.magic`, `words.json`, Craft projects); settings in `config.toml` |
+| stronghold | ❌ Declined | Contradicts #111 §3 (`config.toml` sole authority) |
+| barcode-scanner / biometric / geolocation / haptics / nfc / torch | ❌ Declined | Mobile-only; Magic is a desktop studio |
+
+**Opener audit note:** Both Magic and ArtCraft grant `opener:default` blanket. Copying a sibling's blanket grant is not a justification; Magic's own review must narrow to specific schemes/paths or justify.
+
+**Next audit:** Start from these recorded decisions, not assumptions.

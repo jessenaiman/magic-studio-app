@@ -151,13 +151,12 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
     }
     setBusy(true);
     try {
+      // One command: project.new links the audio, transcribes it and makes the storyboard.
       const created = await executeCommand<{ project: string }>("project.new", {
         name: newName.trim(),
         root: newRoot,
+        ...(newAudio ? { audio: newAudio } : {}),
       });
-      if (newAudio) {
-        await executeCommand("workshop.set_audio", { path: newAudio });
-      }
       setCreating(false);
       setNewAudio("");
       setAudioDropStem(null);

@@ -13,6 +13,7 @@ use serde_json::Value;
 mod documents;
 mod edit;
 mod execute;
+mod save;
 pub mod undo;
 
 /// The engine session. All project changes go through [`Session::execute`].
@@ -55,11 +56,9 @@ pub struct Session {
     pub active_asset: Option<String>,
     /// Last command result, echoed back for inspection.
     pub last_result: Option<Value>,
-    /// Project-file writes; `write_project_file` takes `&Session`, hence the cell.
-    pub project_saves: std::sync::atomic::AtomicU64,
-    /// Successful journaled commands since the project file was last written.
-    pub edits_since_save: u64,
-    /// The open project's documents (`session/documents.rs`).
+    /// The open project's documents (`session/documents.rs`). Each doc owns its
+    /// dirty bit + stamp (Craft Sessions pattern); `Session::has_unsaved_changes`
+    /// is the single aggregate check — no counters.
     pub docs: Vec<crate::doc_state::DocState>,
     /// Undo and redo steps over the open documents (`session/undo.rs`).
     pub history: crate::history::History,
@@ -89,8 +88,6 @@ impl Default for Session {
             video_target: "filmcraft".into(),
             active_asset: None,
             last_result: None,
-            project_saves: std::sync::atomic::AtomicU64::new(0),
-            edits_since_save: 0,
             docs: Vec::new(),
             history: crate::history::History::default(),
             step_base: Vec::new(),
@@ -120,8 +117,6 @@ impl Clone for Session {
             video_target: self.video_target.clone(),
             active_asset: self.active_asset.clone(),
             last_result: self.last_result.clone(),
-            project_saves: std::sync::atomic::AtomicU64::new(self.project_saves.load(std::sync::atomic::Ordering::Relaxed)),
-            edits_since_save: self.edits_since_save,
             docs: self.docs.clone(),
             history: self.history.clone(),
             step_base: Vec::new(),

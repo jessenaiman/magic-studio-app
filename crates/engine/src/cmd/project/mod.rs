@@ -117,6 +117,22 @@ pub fn project_is_dirty(s: &Session, saved: &Value) -> bool {
     ["assets", "workshop", "mode", "song"].iter().any(|key| saved[*key] != current[*key])
 }
 
+/// Project subdirectories for Craft documents, created by `ensure_project_layout`.
+pub const PROJECT_SUBDIRS: &[&str] =
+    &["assets", "assets/backgrounds", "assets/characters", "assets/images", "audio", "design", "exports", "film", "lettering", "storyboard"];
+
+/// Ensure `dir` (the `.magic` file's parent) and its Craft subdirectories exist.
+/// The one place that defines a project's on-disk layout.
+pub fn ensure_project_layout(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut dirs = Vec::new();
+    for sub in PROJECT_SUBDIRS {
+        let p = dir.join(sub);
+        std::fs::create_dir_all(&p)?;
+        dirs.push(p);
+    }
+    Ok(dirs)
+}
+
 /// Writes the open project's asset connections to its `.magic` file atomically (`craft_atomic::atomic_write`),
 /// guarding against external edits via [`crate::link_watch::save_guard`].
 pub fn write_project_file(s: &Session) -> Result<()> {
@@ -125,6 +141,9 @@ pub fn write_project_file(s: &Session) -> Result<()> {
     };
     if path.exists() && !path.is_file() {
         return Err(EngineError::InvalidParams("Project destination must be a regular file; no write performed".into()));
+    }
+    if let Some(dir) = path.parent() {
+        ensure_project_layout(dir)?;
     }
     if s.project_stamp.get().is_some() {
         crate::link_watch::save_guard(path, s.project_stamp.get())?;
@@ -135,7 +154,6 @@ pub fn write_project_file(s: &Session) -> Result<()> {
     if s.record_user_state {
         crate::change_marker::invalidate();
     }
-    s.project_saves.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if s.record_user_state {
         crate::activity::stored(path, written);
     }
@@ -293,10 +311,10 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
         let _ = crate::cmd::project::workshop::cmd_workshop_import_transcript(s, &json!({"path": t, "captions": params["captions"], "replace": true}));
         steps.push(json!({"command": "workshop.import_transcript", "status": "complete"}));
     } else if params.get("process_audio").and_then(Value::as_bool).unwrap_or(true) && params["prepare_only"] != true {
-        let model = params.get("model").and_then(Value::as_str).unwrap_or("large-v3");
+        // FilmCraft owns the speech models (`transcript.models`); pass one only when asked for.
         match crate::cmd::project::workshop::cmd_audio_analyze(
             s,
-            &json!({"analyze_beats": true, "model": model, "resolve_video_cli": params["resolve_video_cli"]}),
+            &json!({"analyze_beats": true, "model": params["model"], "resolve_video_cli": params["resolve_video_cli"]}),
         ) {
             Ok(_) => {
                 steps.push(json!({"command": "audio.analyze", "status": "complete; transcribed, analyzed sections/onsets/moments, and generated beat grid"}))
@@ -344,6 +362,7 @@ pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     write_project_file(s)?;
     let warnings = recent_warning(s, &path, true);
     let workshop = crate::cmd::project::workshop::workshop_status(s)?;
+    let directories = path.parent().map(ensure_project_layout).transpose()?.unwrap_or_default();
     Ok(json!({
         "ok": true,
         "project": path,
@@ -353,6 +372,7 @@ pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
         "assets": s.project_assets,
         "workshop": workshop,
         "next_steps": workshop["next_steps"],
+        "directories": directories,
     }))
 }
 
@@ -453,23 +473,8 @@ fn project_guard(s: &Session, p: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Flush all dirty session `DocState`s atomically with `FileStamp` guards, returning save receipts.
-fn flush_dirty_documents(s: &mut Session) -> Result<Vec<Value>> {
-    let mut saved = Vec::new();
-    for doc in &mut s.docs {
-        if doc.dirty {
-            doc.save()?;
-            saved.push(json!({
-                "kind": doc.kind,
-                "path": doc.path,
-                "revision": doc.revision,
-            }));
-        }
-    }
-    Ok(saved)
-}
-
-/// Save the open project (or save-as when `path` is given).
+/// Save the open project (or save-as when `path` is given). Single save path:
+/// `Session::save_all()` in `session/save.rs` — looks for unsaved files and saves them.
 pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
     if params.get("expected_project").is_some() {
         project_guard(s, params)?;
@@ -483,22 +488,7 @@ pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
     };
     match target {
         Some(target) if s.project_path.as_ref() != Some(&target) => save_as(s, target),
-        _ => {
-            let documents = flush_dirty_documents(s)?;
-            write_project_file(s)?;
-            s.edits_since_save = 0;
-            Ok(json!({
-                "ok": true,
-                "project": s.project_path,
-                "saved": s.project_path,
-                "saves": s.project_saves.load(std::sync::atomic::Ordering::Relaxed),
-                "documents": documents,
-                "native": [],
-                "derivatives": [],
-                "relinked": [],
-                "warnings": [],
-            }))
-        }
+        _ => s.save_all(),
     }
 }
 
@@ -514,8 +504,15 @@ fn save_as(s: &mut Session, target: PathBuf) -> Result<Value> {
         (Some(parent), Some(name)) => parent.join(name),
         _ => target,
     };
-    let documents = flush_dirty_documents(s)?;
-    let previous_path = s.project_path.replace(target);
+    // Flush dirty docs first (still owned by the old path), then switch and save.
+    let mut docs_saved = Vec::new();
+    for doc in &mut s.docs {
+        if doc.dirty {
+            doc.save()?;
+            docs_saved.push(json!({"kind": doc.kind, "path": doc.path, "revision": doc.revision}));
+        }
+    }
+    let previous_path = s.project_path.replace(target.clone());
     let previous_stamp = s.project_stamp.replace(None);
     if let Err(error) = write_project_file(s) {
         s.project_path = previous_path;
@@ -525,17 +522,17 @@ fn save_as(s: &mut Session, target: PathBuf) -> Result<Value> {
     if let Some(path) = s.project_path.as_ref().and_then(|p| std::fs::canonicalize(p).ok()) {
         s.project_path = Some(path);
     }
-    s.edits_since_save = 0;
+    let directories = s.project_path.as_deref().and_then(|p| p.parent()).map(ensure_project_layout).transpose()?.unwrap_or_default();
     Ok(json!({
         "ok": true,
         "project": s.project_path,
         "saved": s.project_path,
-        "saves": s.project_saves.load(std::sync::atomic::Ordering::Relaxed),
-        "documents": documents,
+        "documents": docs_saved,
         "native": [],
         "derivatives": [],
         "relinked": [],
         "warnings": [],
+        "directories": directories,
     }))
 }
 

@@ -1173,6 +1173,21 @@ pub struct StoryboardPackItem {
     pub references: Vec<String>,
     pub reference_image: Option<String>,
     pub existing_image: Option<String>,
+    /// Output aspect ratio for the slot: `16:9`, `4:5` or `5:4`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect: Option<String>,
+    /// Song section of a scene (`Verse 1`, `Chorus`, ...).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
+    /// The scene's transcribed lyrics, read-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lyrics: Option<String>,
+    /// How the type and characters move and react in the scene.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion: Option<String>,
+    /// Rendered PNG of the storyboard page the card sits on (a layout reference).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_sheet: Option<String>,
 }
 
 /// Classify the kinetic/animation style from a page's `overall_design`, `purpose`, or `exact_prompt`.
@@ -1341,4 +1356,84 @@ pub fn ingest_id_marked_assets(project_root: &Path, source_dir: Option<&Path>) -
     ingested.sort_by(|a, b| a.0.cmp(&b.0));
     ingested.dedup_by(|a, b| a.0 == b.0);
     Ok(ingested)
+}
+
+/// Write `storyboard-pack-assets.zip` for a browser tool that cannot read local paths: the pack as
+/// `storyboard-pack.json` with every image path rewritten to `assets/<file>`, plus those images.
+/// Entries are stored uncompressed (the images are PNG already).
+pub fn write_pack_assets_zip(pack: &Value, out: &Path) -> Result<usize> {
+    let mut pack = pack.clone();
+    let mut files: Vec<(String, PathBuf)> = Vec::new();
+    let mut relink = |v: &mut Value| {
+        let Some(path) = v.as_str().map(PathBuf::from).filter(|p| p.is_file()) else { return };
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let entry = format!("assets/{name}");
+        if !files.iter().any(|(e, _)| *e == entry) {
+            files.push((entry.clone(), path));
+        }
+        *v = json!(entry);
+    };
+    for key in ["master_world_composite", "cover_key_art_image"] {
+        relink(&mut pack[key]);
+    }
+    for item in pack["items"].as_array_mut().into_iter().flatten() {
+        for key in ["page_sheet", "reference_image", "existing_image"] {
+            relink(&mut item[key]);
+        }
+    }
+    let mut entries: Vec<(String, Vec<u8>)> =
+        vec![("storyboard-pack.json".into(), serde_json::to_vec_pretty(&pack).map_err(|e| ScribblesError::Invalid(e.to_string()))?)];
+    for (entry, path) in files {
+        entries.push((entry, fs::read(&path)?));
+    }
+    let count = entries.len();
+    craft_atomic::atomic_write(out, &stored_zip(&entries))?;
+    Ok(count)
+}
+
+/// A minimal stored (method 0) zip archive.
+fn stored_zip(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut central = Vec::new();
+    for (name, data) in entries {
+        let mut crc = flate2::Crc::new();
+        crc.update(data);
+        let (crc, size, offset) = (crc.sum(), data.len() as u32, out.len() as u32);
+        let header = |sig: u32, central: bool| {
+            let mut h = Vec::new();
+            h.extend(sig.to_le_bytes());
+            if central {
+                h.extend(20u16.to_le_bytes());
+            }
+            h.extend(20u16.to_le_bytes()); // version needed
+            h.extend(0x0800u16.to_le_bytes()); // UTF-8 names
+            h.extend(0u16.to_le_bytes()); // stored
+            h.extend([0u8; 4]); // time, date
+            h.extend(crc.to_le_bytes());
+            h.extend(size.to_le_bytes());
+            h.extend(size.to_le_bytes());
+            h.extend((name.len() as u16).to_le_bytes());
+            h.extend(0u16.to_le_bytes()); // extra
+            if central {
+                h.extend([0u8; 6]); // comment length, disk, internal attrs
+                h.extend(0u32.to_le_bytes()); // external attrs
+                h.extend(offset.to_le_bytes());
+            }
+            h.extend(name.as_bytes());
+            h
+        };
+        out.extend(header(0x0403_4b50, false));
+        out.extend(data);
+        central.extend(header(0x0201_4b50, true));
+    }
+    let (cd_offset, cd_size, n) = (out.len() as u32, central.len() as u32, entries.len() as u16);
+    out.extend(central);
+    out.extend(0x0605_4b50u32.to_le_bytes());
+    out.extend([0u8; 4]);
+    out.extend(n.to_le_bytes());
+    out.extend(n.to_le_bytes());
+    out.extend(cd_size.to_le_bytes());
+    out.extend(cd_offset.to_le_bytes());
+    out.extend(0u16.to_le_bytes());
+    out
 }

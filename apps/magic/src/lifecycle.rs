@@ -1,4 +1,6 @@
 //! One non-destructive lifecycle gate for native windows, control and frontend IPC.
+//! Craft pattern (craft-quit / Craft Sessions): the session owns the single
+//! `has_unsaved_changes()` check. No UI draft aggregation, no second tracker.
 use magic::Session;
 use serde_json::{Value, json};
 
@@ -25,8 +27,8 @@ impl Lifecycle {
 }
 
 fn check_engine(session: &Session) -> Result<Value, String> {
-    if session.docs.iter().any(|doc| doc.dirty) {
-        return Err("Save the edited project documents before closing, restarting or switching projects".into());
+    if session.has_unsaved_changes() {
+        return Err("Save project changes before closing, restarting or switching projects".into());
     }
     let saved = match &session.project_path {
         Some(path) => {
@@ -35,9 +37,6 @@ fn check_engine(session: &Session) -> Result<Value, String> {
             if !saved.is_object() || saved["format"] != "magic.project" {
                 return Err("Cannot verify saved project format; save the project before continuing".into());
             }
-            if magic::project::project_is_dirty(session, &saved) {
-                return Err("Save project changes before closing, restarting or switching projects".into());
-            }
             saved
         }
         None => Value::Null,
@@ -45,22 +44,6 @@ fn check_engine(session: &Session) -> Result<Value, String> {
     Ok(
         json!({"project":session.project_path,"saved":saved,"documents":session.docs.iter().map(|doc| json!({"path":doc.path,"revision":doc.revision})).collect::<Vec<_>>()}),
     )
-}
-
-fn check_drafts(report: &Value) -> Result<(), String> {
-    let (Some(dirty), Some(saving), Some(drafts)) = (report["dirty"].as_bool(), report["saving"].as_bool(), report["drafts"].as_array()) else {
-        return Err("Cannot verify editor drafts; wait for the workspace to finish loading before continuing".into());
-    };
-    if saving {
-        return Err("Wait for the editor save to finish before closing, restarting or switching projects".into());
-    }
-    if dirty || !drafts.is_empty() {
-        return Err(format!(
-            "Save the editor changes before closing, restarting or switching projects{}",
-            if drafts.is_empty() { String::new() } else { format!(": {}", drafts.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", ")) }
-        ));
-    }
-    Ok(())
 }
 
 pub(super) struct Transition {
@@ -97,11 +80,8 @@ pub(super) fn begin(app: &tauri::AppHandle) -> Result<Transition, String> {
         .map_err(|_| "Another close or project switch is already being checked")?;
     let mut guard = Transition { desktop, stamp: Value::Null };
     guard.stamp = available_engine(&guard.desktop.session)?;
-    if !guard.stamp["project"].is_null() {
-        if !guard.desktop.ready.load(Ordering::Acquire) {
-            return Err("Wait for the desktop to finish loading before continuing".into());
-        }
-        check_drafts(&super::ui_request(app, "ui.drafts", json!({}))?)?;
+    if !guard.stamp["project"].is_null() && !guard.desktop.ready.load(Ordering::Acquire) {
+        return Err("Wait for the desktop to finish loading before continuing".into());
     }
     Ok(guard)
 }
@@ -117,6 +97,14 @@ pub(super) fn exit(app: &tauri::AppHandle, restart: bool) -> Result<Value, Strin
     std::thread::spawn(move || {
         // Preserve the existing control reply flush before terminating the app.
         std::thread::sleep(std::time::Duration::from_millis(150));
+        // Craft pattern (craft-quit): on macOS quit via NSApplication terminate,
+        // which ends the process before another display cycle drops the window.
+        // Tauri has no egui close_requested hook, so we call quit() directly.
+        #[cfg(target_os = "macos")]
+        if craft_quit::quit() {
+            // quit scheduled; keep window alive for the event to drain.
+            return;
+        }
         if restart {
             handle.request_restart();
         } else {

@@ -359,6 +359,15 @@ fn apply_id_marked_assets_to_storyboard(s: &mut Session, marked: &[(String, Stri
     let pages_val = s.execute("storyboard.pages", json!({ "full": true })).unwrap_or_default();
     let pages_arr = pages_val["pages"].as_array().cloned().unwrap_or_default();
     let total_pages = pages_arr.len();
+    // Pages are found by kind: section title pages sit between them, so positions move.
+    let first_of = |kind: &str| pages_arr.iter().find(|pg| pg["archetype"].as_str() == Some(kind)).and_then(|pg| pg["page"].as_u64()).map(|n| n as usize);
+    let (world_page, char_page, cast_page) = (first_of("world"), first_of("char"), first_of("character_cover"));
+    let scene_has = |label: &str| {
+        pages_arr.iter().any(|pg| {
+            pg["archetype"].as_str() == Some("scene") && pg["slots"].as_array().is_some_and(|slots| slots.iter().any(|sl| sl["label"].as_str() == Some(label)))
+        })
+    };
+    let scene_result = scene_has("result_image");
 
     for (id_marker, code, slot, path) in marked {
         let path_str = path.to_string_lossy().to_string();
@@ -392,15 +401,27 @@ fn apply_id_marked_assets_to_storyboard(s: &mut Session, marked: &[(String, Stri
                     _ => "world_result_image".to_string(),
                 }
             };
-            page_images.entry(1).or_default().insert(target_slot.clone(), json!(path_str));
+            if let Some(world) = world_page {
+                page_images.entry(world).or_default().insert(target_slot.clone(), json!(path_str));
+            }
             if (1..=3).contains(&loc_no) {
                 page_images.entry(0).or_default().insert(format!("cover_reg_thumb_{loc_no}"), json!(path_str));
             }
         } else if let Some(num_str) = code.strip_prefix('C')
             && let Ok(char_no) = num_str.parse::<usize>()
         {
-            let target_slot = if slot.starts_with("char_") { slot.clone() } else { "char_original_image".to_string() };
-            page_images.entry(2).or_default().insert(target_slot, json!(path_str));
+            // `C<n>__char_*` fills the character pair sheet; any other slot (e.g. `character_thumb_<n>`)
+            // only fills that character's cast thumbnail.
+            if slot.starts_with("char_")
+                && let Some(chr) = char_page
+            {
+                page_images.entry(chr).or_default().insert(slot.clone(), json!(path_str));
+            }
+            if let Some(cast) = cast_page
+                && (1..=9).contains(&char_no)
+            {
+                page_images.entry(cast).or_default().insert(format!("character_thumb_{char_no}"), json!(path_str));
+            }
             if (1..=3).contains(&char_no) {
                 page_images.entry(0).or_default().insert(format!("cover_reg_thumb_{}", char_no + 3), json!(path_str));
             }
@@ -410,7 +431,9 @@ fn apply_id_marked_assets_to_storyboard(s: &mut Session, marked: &[(String, Stri
             let entry = scene_images.entry(scene_no).or_default();
             entry.insert(slot.clone(), json!(path_str));
             if slot == "hero_image" {
-                entry.entry("result_image".to_string()).or_insert_with(|| json!(path_str));
+                if scene_result {
+                    entry.entry("result_image".to_string()).or_insert_with(|| json!(path_str));
+                }
                 if (1..=5).contains(&scene_no) {
                     page_images.entry(0).or_default().insert(format!("cover_songmap_{scene_no}"), json!(path_str));
                 }
@@ -1038,19 +1061,20 @@ fn slot_image_in(slots: &[Value], label: &str) -> Option<String> {
 
 fn extract_cover_pack_meta(pages: &[Value], workspace_root: &std::path::Path) -> (String, String, Vec<Value>, Option<String>, Vec<Value>) {
     let mut cast_moppets: Vec<Value> = Vec::new();
-    let default_core = "CORE STYLE: torn notebook paper, painted ink, cardboard, clay, foil; front 3/4 only, quiet title zone, no text in image.".to_string();
+    let default_core =
+        "CORE STYLE: the look written on the storyboard cover; no text, letters or logos in the image; leave clean space for animated lyrics.".to_string();
     let Some(cover_pg) = pages.first() else {
         return (default_core, String::new(), Vec::new(), None, cast_moppets);
     };
     let sl = cover_pg["slots"].as_array().cloned().unwrap_or_default();
-    let sub = slot_text_in(&sl, "cover_subtitle");
-    let design = slot_text_in(&sl, "cover_overall_design");
+    let sub = filled(slot_text_in(&sl, "cover_subtitle"));
+    let design = filled(slot_text_in(&sl, "cover_overall_design"));
     let key_art = slot_image_in(&sl, "cover_key_art");
     let mut reg = Vec::new();
     for idx in 1..=6 {
-        let code = slot_text_in(&sl, &format!("cover_reg_id_{idx}"));
-        let name = slot_text_in(&sl, &format!("cover_reg_name_{idx}"));
-        let where_used = slot_text_in(&sl, &format!("cover_reg_where_{idx}"));
+        let code = filled(slot_text_in(&sl, &format!("cover_reg_id_{idx}")));
+        let name = filled(slot_text_in(&sl, &format!("cover_reg_name_{idx}")));
+        let where_used = filled(slot_text_in(&sl, &format!("cover_reg_where_{idx}")));
         let thumb = slot_image_in(&sl, &format!("cover_reg_thumb_{idx}"));
         if !code.is_empty() {
             let lower_name = name.to_ascii_lowercase();
@@ -1087,6 +1111,7 @@ fn append_page_pack_items(
     core_style: &str,
     master_reference_register: &[Value],
     workspace_root: &std::path::Path,
+    first_world: Option<usize>,
     items: &mut Vec<StoryboardPackItem>,
 ) {
     let page_idx = pg["page"].as_u64().unwrap_or(0) as usize;
@@ -1110,28 +1135,19 @@ fn append_page_pack_items(
                 references: vec!["L01".into(), "L02".into(), "C01".into()],
                 reference_image: None,
                 existing_image: slot_image_in(&slots, "cover_key_art"),
+                aspect: Some("16:9".into()),
+                ..Default::default()
             });
         }
-        "world" if page_idx == 1 => {
+        "world" if first_world == Some(page_idx) => {
             let base_prompt = slot_text_in(&slots, "world_location_prompt");
             let l01_cap = slot_text_in(&slots, "world_stage_caption");
             let l02_cap = slot_text_in(&slots, "world_source_image_caption");
             let l03_cap = slot_text_in(&slots, "world_result_image_caption");
-            let l01_desc = if !l01_cap.is_empty() {
-                format!("L01 {l01_cap}")
-            } else {
-                "L01 Blank Paper Wall (verse): blank ruled notebook paper wall + hand-drawn ink doodle arrows".to_string()
-            };
-            let l02_desc = if !l02_cap.is_empty() {
-                format!("L02 {l02_cap}")
-            } else {
-                "L02 Cardboard Box (chorus mock): open corrugated cardboard box + empty tray, front 3/4".to_string()
-            };
-            let l03_desc = if !l03_cap.is_empty() {
-                format!("L03 {l03_cap}")
-            } else {
-                "L03 Clay Room (AI plate outro): empty matte clay room + crumpled foil spotlight cone, no text".to_string()
-            };
+            let l01_desc =
+                if !l01_cap.is_empty() { format!("L01 {l01_cap}") } else { "L01 Main stage: the world's primary performance set, no characters".to_string() };
+            let l02_desc = if !l02_cap.is_empty() { format!("L02 {l02_cap}") } else { "L02 Second location of the world, no characters".to_string() };
+            let l03_desc = if !l03_cap.is_empty() { format!("L03 {l03_cap}") } else { "L03 Third location of the world, no characters".to_string() };
 
             for (code, slot, desc) in [("L01", "world_stage_image", l01_desc), ("L02", "world_source_image", l02_desc), ("L03", "world_result_image", l03_desc)]
             {
@@ -1148,6 +1164,8 @@ fn append_page_pack_items(
                     references: Vec::new(),
                     reference_image: None,
                     existing_image: slot_image_in(&slots, slot),
+                    aspect: Some("16:9".into()),
+                    ..Default::default()
                 });
             }
         }
@@ -1164,14 +1182,9 @@ fn append_page_pack_items(
             let c02_cap = slot_text_in(&slots, "char_pose_image_caption");
             let c03_cap = slot_text_in(&slots, "char_hand_note");
             let c01_default =
-                if !c01_cap.is_empty() { format!("C01 {c01_cap}") } else { "C01 Creator paper cutout character with crayon shrug, front 3/4".to_string() };
-            let c02_default = if !c02_cap.is_empty() {
-                format!("C02 {c02_cap}")
-            } else {
-                "C02 Clay Mic with crumpled silver foil grille on clay stand, front 3/4".to_string()
-            };
-            let c03_default =
-                if !c03_cap.is_empty() { format!("C03 {c03_cap}") } else { "C03 Paper Hand cutout reaching with cursor physics energy, front 3/4".to_string() };
+                if !c01_cap.is_empty() { format!("C01 {c01_cap}") } else { "C01 Lead character, full body, front 3/4, limbs separated".to_string() };
+            let c02_default = if !c02_cap.is_empty() { format!("C02 {c02_cap}") } else { "C02 Lead character, open animation-ready pose".to_string() };
+            let c03_default = if !c03_cap.is_empty() { format!("C03 {c03_cap}") } else { "C03 Lead character, geometry / pose reference".to_string() };
 
             for (code, slot, default_desc) in
                 [("C01", "char_original_image", c01_default), ("C02", "char_pose_image", c02_default), ("C03", "char_geometry_pose", c03_default)]
@@ -1197,35 +1210,114 @@ fn append_page_pack_items(
                     references: Vec::new(),
                     reference_image: locked_ref,
                     existing_image: slot_image_in(&slots, slot),
+                    aspect: Some("4:5".into()),
+                    ..Default::default()
                 });
             }
         }
         "scene" => {
+            // One Scene | Lyrics | Motion spread: the hero frame, two lyric key frames and the motion stage.
             let code = format!("S{scene_counter:02}");
-            let design = slot_text_in(&slots, "overall_design");
-            let exact_prompt = slot_text_in(&slots, "exact_prompt");
-            let loc_ref = slot_text_in(&slots, "location_ref");
-            let char_lead = slot_text_in(&slots, "character_lead");
-            let char_shared = slot_text_in(&slots, "character_shared");
-            let refs: Vec<String> = [loc_ref, char_lead, char_shared].into_iter().filter(|r| !r.is_empty() && !r.starts_with('[')).collect();
+            let design = filled(slot_text_in(&slots, "overall_design"));
+            let exact_prompt = filled(slot_text_in(&slots, "exact_prompt"));
+            let refs: Vec<String> =
+                ["location_ref", "character_lead", "character_shared"].into_iter().map(|l| filled(slot_text_in(&slots, l))).filter(|r| !r.is_empty()).collect();
+            let refs = if refs.is_empty() { vec!["L01".to_string(), "C01".to_string()] } else { refs };
+            let section = Some(filled(slot_text_in(&slots, "section"))).filter(|s| !s.is_empty());
+            let lyrics = Some(filled(slot_text_in(&slots, "lyrics_text"))).filter(|s| !s.is_empty());
+            let motion = Some(filled(slot_text_in(&slots, "motion_choreography_notes"))).filter(|s| !s.is_empty());
+            let scene_title = filled(slot_text_in(&slots, "title"));
             let anim_style = classify_animation_style(&design, &exact_prompt);
-            items.push(StoryboardPackItem {
-                id_marker: format!("{code}__hero_image"),
-                code,
-                page: page_idx,
-                archetype,
-                slot: "hero_image".into(),
-                kind: "scene".into(),
-                title: format!("SCENE {scene_counter:02} — {}", slot_text_in(&slots, "title")),
-                prompt: if exact_prompt.is_empty() { format!("{core_style} | {design}") } else { exact_prompt },
-                animation_style: anim_style,
-                references: refs,
-                reference_image: slot_image_in(&slots, "source_image"),
-                existing_image: slot_image_in(&slots, "hero_image"),
-            });
+            // The core style is the pack's; the page holds only the scene's own prompt.
+            let base = if exact_prompt.is_empty() { format!("{core_style} | {design}") } else { format!("{core_style} | {exact_prompt}") };
+            for (slot, kind, aspect, prompt) in [
+                ("hero_image", "scene", "16:9", base.clone()),
+                (
+                    "lyrics_frame_1",
+                    "lyrics",
+                    "16:9",
+                    format!("{base} | KEY FRAME 1: the lyric's first beat; the characters react to the words; leave room for animated type"),
+                ),
+                ("lyrics_frame_2", "lyrics", "16:9", format!("{base} | KEY FRAME 2: the lyric's payoff beat, a later moment of the same action")),
+                ("motion_stage_image", "motion", "16:9", format!("{base} | MOTION STAGE: the composite stage the type and characters move across")),
+            ] {
+                if !slots.iter().any(|sl| sl["label"].as_str() == Some(slot)) {
+                    continue;
+                }
+                items.push(StoryboardPackItem {
+                    id_marker: format!("{code}__{slot}"),
+                    code: code.clone(),
+                    page: page_idx,
+                    archetype: archetype.clone(),
+                    slot: slot.into(),
+                    kind: kind.into(),
+                    title: format!("SCENE {scene_counter:02} — {scene_title}"),
+                    prompt,
+                    animation_style: anim_style.clone(),
+                    references: refs.clone(),
+                    reference_image: slot_image_in(&slots, "source_image"),
+                    existing_image: slot_image_in(&slots, slot),
+                    aspect: Some(aspect.into()),
+                    section: section.clone(),
+                    lyrics: lyrics.clone(),
+                    motion: motion.clone(),
+                    ..Default::default()
+                });
+            }
+        }
+        "character_cover" => {
+            for n in 1..=9 {
+                let slot = format!("character_thumb_{n}");
+                let name = filled(slot_text_in(&slots, &format!("character_name_{n}")));
+                items.push(StoryboardPackItem {
+                    id_marker: format!("C{n:02}__{slot}"),
+                    code: format!("C{n:02}"),
+                    page: page_idx,
+                    archetype: archetype.clone(),
+                    slot: slot.clone(),
+                    kind: "character".into(),
+                    title: if name.is_empty() { format!("Cast C{n:02}") } else { name.clone() },
+                    prompt: format!("{core_style} | Cast thumbnail C{n:02} {name}: full body, front 3/4, plain background"),
+                    animation_style: "cutout_rig".into(),
+                    existing_image: slot_image_in(&slots, &slot),
+                    aspect: Some("5:4".into()),
+                    ..Default::default()
+                });
+            }
+        }
+        "section" | "assets" | "final" => {
+            let image_slots: Vec<String> = slots
+                .iter()
+                .filter(|sl| sl["kind"].as_str() == Some("image") && !sl["locked"].as_bool().unwrap_or(false))
+                .filter_map(|sl| sl["label"].as_str().map(str::to_string))
+                .collect();
+            for slot in image_slots {
+                let what = if archetype == "section" { format!("{title} section key art") } else { slot.replace('_', " ") };
+                items.push(StoryboardPackItem {
+                    id_marker: format!("P{page_idx}__{slot}"),
+                    code: format!("P{page_idx}"),
+                    page: page_idx,
+                    archetype: archetype.clone(),
+                    slot: slot.clone(),
+                    kind: archetype.clone(),
+                    title: what.clone(),
+                    prompt: format!("{core_style} | {what}"),
+                    animation_style: "ai_plate_post".into(),
+                    references: vec!["L01".into(), "C01".into()],
+                    existing_image: slot_image_in(&slots, &slot),
+                    aspect: Some(if slot.starts_with("assets_thumb") { "16:9" } else { "16:9" }.into()),
+                    ..Default::default()
+                });
+            }
         }
         _ => {}
     }
+}
+
+/// A slot's text, or empty while it still holds the template's `[…]` placeholder.
+fn filled(text: String) -> String {
+    let t = text.trim().trim_matches(|c| c == '“' || c == '”');
+    if t.starts_with('[') || t.is_empty() { String::new() } else { text.trim().to_string() }
 }
 
 /// Build the Master Storyboard & Animation Pack (`storyboard/storyboard-pack.json`) by reading
@@ -1246,6 +1338,7 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
 
     let mut items: Vec<StoryboardPackItem> = Vec::new();
     let mut scene_counter = 0usize;
+    let first_world = pages.iter().find(|pg| pg["archetype"].as_str() == Some("world")).and_then(|pg| pg["page"].as_u64()).map(|n| n as usize);
 
     for pg in &pages {
         let page_idx = pg["page"].as_u64().unwrap_or(0) as usize;
@@ -1263,7 +1356,35 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
         {
             continue;
         }
-        append_page_pack_items(pg, scene_counter, &core_style, &master_reference_register, &workspace_root, &mut items);
+        append_page_pack_items(pg, scene_counter, &master_prompt, &master_reference_register, &workspace_root, first_world, &mut items);
+    }
+
+    // Each card's page sheet: the exported PNG of the Letter page it sits on.
+    if p["page_sheets"].as_bool().unwrap_or(true)
+        && let Ok(export) = s.execute("storyboard.export", json!({}))
+    {
+        let mut sheet_of: BTreeMap<u64, String> = BTreeMap::new();
+        for f in export["files"].as_array().into_iter().flatten() {
+            if f["version"].as_str() == Some("Pages")
+                && let (Some(n), Some(path)) = (f["pages"][0].as_u64(), f["path"].as_str())
+            {
+                sheet_of.insert(n.saturating_sub(1), path.to_string());
+            }
+        }
+        for item in &mut items {
+            let doc_pages: Vec<u64> = pages
+                .iter()
+                .find(|pg| pg["page"].as_u64() == Some(item.page as u64))
+                .and_then(|pg| pg["document_pages"].as_array())
+                .map(|list| list.iter().filter_map(Value::as_u64).collect())
+                .unwrap_or_default();
+            let side = match item.kind.as_str() {
+                "lyrics" => 1,
+                "motion" => 2,
+                _ => usize::from(item.slot.starts_with("char_pose") || item.slot.starts_with("world_source") || item.slot.starts_with("world_result")),
+            };
+            item.page_sheet = doc_pages.get(side).or(doc_pages.first()).and_then(|n| sheet_of.get(n)).cloned();
+        }
     }
 
     // Build the Master World Composite (`storyboard/composites/MASTER_WORLD__composite.png`) by flattening
@@ -1327,7 +1448,11 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
             if let Ok(built) = craft_scribbles::build_composite_reference(&ref_files, &out_comp) {
                 let built_str = built.to_string_lossy().to_string();
                 item.reference_image = Some(built_str.clone());
-                if item.archetype == "scene" {
+                let has_source = pages.iter().any(|pg| {
+                    pg["page"].as_u64() == Some(item.page as u64)
+                        && pg["slots"].as_array().is_some_and(|slots| slots.iter().any(|sl| sl["label"].as_str() == Some("source_image")))
+                });
+                if item.archetype == "scene" && has_source {
                     source_updates.push(json!({
                         "page": item.page,
                         "images": { "source_image": built_str }
@@ -1391,7 +1516,13 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
         let _ = craft_scribbles::open_moppet_maker_window(Some(DEFAULT_STORYBOARD_PACK_TOOL_URL));
     }
 
+    let assets_zip = sb_dir.join("storyboard-pack-assets.zip");
+    let zipped =
+        craft_scribbles::write_pack_assets_zip(&pack_doc, &assets_zip).map_err(|e| EngineError::CommandFailed("scribbles.pack".into(), e.to_string()))?;
+
     let mut res = pack_doc;
     res["pack_path"] = json!(out_path);
+    res["assets_zip"] = json!(assets_zip);
+    res["assets_zip_entries"] = json!(zipped);
     Ok(res)
 }

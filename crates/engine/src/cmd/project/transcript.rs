@@ -387,13 +387,19 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
         .or_else(|| s.song_audio.clone())
         .filter(|p| p.is_file())
         .ok_or_else(|| EngineError::InvalidParams("no song audio: pass audio=<file> or workshop.set_audio".into()))?;
-    let model = params["model"].as_str().unwrap_or("whisper-base").to_string();
-    crate::cmd::film::cmd_video_exec(
-        s,
-        &json!({
-            "id": "transcript.generate",
-            "params": {"model": model, "language": "auto"},
-            "save": true
-        }),
-    )
+    let mut generate = json!({"language": "auto"});
+    if let Some(model) = params["model"].as_str().filter(|m| !m.is_empty()) {
+        generate["model"] = json!(model);
+    }
+    let generated = crate::cmd::film::cmd_video_exec(s, &json!({"id": "transcript.generate", "params": generate, "save": true}))?;
+    // FilmCraft holds the transcript; the project's Words step reads `transcript.json`, so write it there too.
+    let inspected = crate::cmd::film::cmd_video_exec(s, &json!({"id": "transcript.inspect", "params": {}}))?;
+    let words = inspected["result"]["words"].clone();
+    let mut out = generated;
+    if let (Some(dir), true) = (s.project_path.as_ref().and_then(|p| p.parent()).map(Path::to_path_buf), words.is_array()) {
+        let dest = dir.join("transcript.json");
+        write_transcript(&dest, &json!({"words": words}), &json!({"replace": true}))?;
+        out["transcript"] = json!(dest);
+    }
+    Ok(out)
 }

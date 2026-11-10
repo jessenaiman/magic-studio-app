@@ -65,23 +65,24 @@ stays fixed while the text and images inside it change. Discover the pages and
 their labels before editing:
 
 ```bash
-magic-cli storyboard pages --path /absolute/storyboard.designcraft
-magic-cli storyboard slots --path /absolute/storyboard.designcraft --page 1
+magic-cli storyboard pages path=/absolute/storyboard.designcraft
+magic-cli storyboard pages path=/absolute/storyboard.designcraft page=1
 ```
 
 Add a page copied from a template page, add a section (a parent page) and
 apply it to pages, then fill the new page:
 
 ```bash
-magic-cli storyboard add --path /absolute/storyboard.designcraft --archetype world --at 2 \
-  --text world_heading="THE DESERT / L02"
-magic-cli storyboard section --path /absolute/storyboard.designcraft --name B --based-on A-Parent --page 4
-magic-cli storyboard set --path /absolute/storyboard.designcraft --label world_register \
-  --text world_register="L01 Ocean Stage / stage-ocean-v1.png / 1672 x 941 px"
+magic-cli storyboard add path=/absolute/storyboard.designcraft archetype=world at=2 \
+  label=world_heading text="THE DESERT / L02"
+magic-cli storyboard section path=/absolute/storyboard.designcraft name=B based_on=A-Parent page=4
+magic-cli storyboard set path=/absolute/storyboard.designcraft label=world_register \
+  text="L01 Ocean Stage / stage-ocean-v1.png / 1672 x 941 px"
 ```
 
-Set text and images with `--text SLOT=VALUE` and `--image SLOT=PATH`; target a
-page with `--page`, `--label` or `--scene`.
+Set a slot with `label=SLOT text="…"` or `label=SLOT image=PATH`; target a
+page with `page=N` or `scene=N` (a label alone reaches the first page that has it).
+Every editable element in the template prints its command inside it.
 
 Put new art over an existing slot without losing the original: the revision
 becomes a new object on its own layer, and the frame it covers stays in the
@@ -114,14 +115,14 @@ with the command that fills it, so a missing block traces straight to the CLI
 call that changes it:
 
 ```bash
-magic-cli storyboard check --path /absolute/storyboard.designcraft
+magic-cli storyboard check path=/absolute/storyboard.designcraft
 ```
 
 Render a page to look at it, and export the document when it is finished:
 
 ```bash
-magic-cli storyboard render --path /absolute/storyboard.designcraft --page 1 --out /absolute/page.png
-magic-cli storyboard export --path /absolute/storyboard.designcraft --pdf /absolute/storyboard.pdf
+magic-cli storyboard thumbnail path=/absolute/storyboard.designcraft page=1 out=/absolute/page.png
+magic-cli storyboard export path=/absolute/storyboard.designcraft dir=/absolute/export
 ```
 
 ## Save and verify the result

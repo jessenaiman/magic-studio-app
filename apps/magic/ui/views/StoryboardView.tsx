@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { executeCommand, fileUrl, StoryboardData, StoryboardPage, StoryboardSlot } from "../api";
+import { executeCommand, fileUrl, StoryboardData, StoryboardPage } from "../api";
 import "../storyboard.css";
 
 interface Props {
@@ -8,6 +8,10 @@ interface Props {
   onRefresh: () => Promise<void>;
   onToast: (message: string) => void;
 }
+
+/** A storyboard page is a spread of Letter pages; older documents without `document_pages` are one page each. */
+const docPages = (item: StoryboardPage) => item.document_pages?.length ? item.document_pages : [item.page];
+const LETTER_W = 612;
 
 function StatusMark({ status }: { status: string }) {
   const glyph = status === "incomplete" ? "●" : status === "empty" ? "○" : "✓";
@@ -23,8 +27,6 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [zoom, setZoom] = useState(100);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [editing, setEditing] = useState<string | null>(null);
   const request = useRef(0);
   const liveProject = useRef(projectPath);
   const cardsRef = useRef<HTMLDivElement | null>(null);
@@ -32,7 +34,6 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
   liveProject.current = projectPath;
   const folder = projectPath.replace(/[/\\][^/\\]+$/, "");
   const page = pages[Math.min(pageIndex, Math.max(0, pages.length - 1))];
-  const slotKey = (pageNum: number, slot: StoryboardSlot) => `${pageNum}:${slot.label}`;
 
   const load = async () => {
     const current = ++request.current;
@@ -43,7 +44,9 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
       const completion = await executeCommand<StoryboardData>("storyboard.check", { _expected_project: project });
       const thumbs = await executeCommand<{ files: string[]; modified: number }>("storyboard.thumbnail", { rail: true, scale: 0.45, _expected_project: project });
       if (current !== request.current || liveProject.current !== project) return;
-      setPages(data.pages);
+      // A view switch can catch DesignCraft mid-write and return an empty page list; keep the
+      // pages already on screen instead of flashing "No readable storyboard".
+      setPages((old) => (data.pages.length ? data.pages : old));
       setCheck(completion);
       setRail(thumbs.files.map((file) => `${fileUrl(file)}?v=${thumbs.modified}`));
       setPageIndex((index) => Math.min(index, Math.max(0, data.pages.length - 1)));
@@ -56,8 +59,6 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
 
   useEffect(() => {
     setPageIndex(0);
-    setDrafts({});
-    setEditing(null);
     setPreviews({});
     void load();
     return () => {
@@ -68,16 +69,17 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
   useEffect(() => {
     let cancelled = false;
     if (page) {
-      const targetPage = page.page;
-      void executeCommand<{ out: string; modified: number }>("storyboard.thumbnail", { page: targetPage, scale: 0.75, _expected_project: projectPath })
-        .then((shot) => {
-          if (!cancelled) {
-            setPreviews((old) => ({ ...old, [targetPage]: `${fileUrl(shot.out)}?v=${shot.modified}` }));
-          }
-        })
-        .catch((cause) => {
-          if (!cancelled) setError(String(cause));
-        });
+      for (const docPage of docPages(page)) {
+        void executeCommand<{ out: string; modified: number }>("storyboard.thumbnail", { document_page: docPage, scale: 0.75, _expected_project: projectPath })
+          .then((shot) => {
+            if (!cancelled) {
+              setPreviews((old) => ({ ...old, [docPage]: `${fileUrl(shot.out)}?v=${shot.modified}` }));
+            }
+          })
+          .catch((cause) => {
+            if (!cancelled) setError(String(cause));
+          });
+      }
     }
     return () => {
       cancelled = true;
@@ -87,7 +89,6 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
   const scrollToPage = (index: number) => {
     const clamped = Math.max(0, Math.min(pages.length - 1, index));
     setPageIndex(clamped);
-    setEditing(null);
     programmaticScrollUntil.current = Date.now() + 500;
     const target = document.getElementById(`sb-spread-${clamped}`);
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -135,47 +136,8 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
     }
   };
 
-  const change = (pageNum: number, slot: StoryboardSlot, value: string) => {
-    const key = slotKey(pageNum, slot);
-    setDrafts((old) => {
-      const next = { ...old };
-      if (value === (slot.text ?? "")) delete next[key];
-      else next[key] = value;
-      return next;
-    });
-  };
-
-  const cancel = (pageNum: number, slot: StoryboardSlot) => {
-    const key = slotKey(pageNum, slot);
-    setDrafts((old) => {
-      const next = { ...old };
-      delete next[key];
-      return next;
-    });
-    setEditing(null);
-  };
-
-  const save = async (pageNum: number, slot: StoryboardSlot) => {
-    const key = slotKey(pageNum, slot);
-    const value = drafts[key];
-    if (value === undefined) return;
-    await action(
-      "Saving field…",
-      async () => {
-        await executeCommand("storyboard.set", { page: pageNum, fields: { [slot.label]: value }, _expected_project: projectPath });
-        setDrafts((old) => {
-          const next = { ...old };
-          delete next[key];
-          return next;
-        });
-        setEditing(null);
-      },
-      true
-    );
-  };
-
   return (
-    <div id="view-storyboard" className="storyboard-layout" data-document-dirty={Object.keys(drafts).length > 0} data-document-saving={busy === "Saving field…"}>
+    <div id="view-storyboard" className="storyboard-layout">
       <aside className="sb-panel sb-index">
         <header>
           <h2>Storyboard &amp; design index</h2>
@@ -194,17 +156,17 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
                 onClick={() => scrollToPage(index)}
               >
                 <div className="sb-nav-preview">
-                  {rail[item.page] ? <img src={rail[item.page]} alt={`Page ${item.page + 1}: ${item.title}`} /> : <span>{item.page + 1}</span>}
+                  {docPages(item).map((n) => (rail[n] ? <img key={n} src={rail[n]} alt={`Page ${n + 1}: ${item.title}`} /> : <span key={n}>{n + 1}</span>))}
                 </div>
                 <span><StatusMark status={status} /> {item.page + 1}. {item.title}</span>
               </button>
             );
           })}
         </nav>
-        <button id="storyboard-export" className="ghost" disabled={!!busy || !pages.length} onClick={() => void action("Exporting PDF & Deck…", async () => {
-          await executeCommand("storyboard.export", { pdf: `${folder}/storyboard.pdf`, pptx: `${folder}/storyboard.pptx`, _expected_project: projectPath });
-          onToast("Saved storyboard.pdf & storyboard.pptx");
-        })}>Export PDF &amp; Deck</button>
+        <button id="storyboard-export" className="ghost" disabled={!!busy || !pages.length} onClick={() => void action("Exporting print, screen & pages…", async () => {
+          await executeCommand("storyboard.export", { dir: `${folder}/export`, _expected_project: projectPath });
+          onToast("Exported print PDF, screen PDF & page PNGs to export/");
+        })}>Export</button>
       </aside>
       <main className="sb-panel sb-main">
         <header className="sb-toolbar">
@@ -221,8 +183,7 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
         <div id="sb-cards" ref={cardsRef} onScroll={handleScroll} className={`sb-spread ${zoom === 100 ? "fit" : "zoomed"}`}>
           {pages.length ? (
             pages.map((item) => {
-              const imgSrc = previews[item.page] || rail[item.page];
-              const [vx, vy, vx1, vy1] = item.bounds ?? [0, 0, 1600, 1000];
+              const [, vy, , vy1] = item.bounds ?? [0, 0, LETTER_W, 792];
               const itemTextSlots = (item.slots || []).filter((slot) => slot.kind === "text" && !slot.locked && !slot.hidden);
               const isCurrent = page?.page === item.page;
               return (
@@ -232,69 +193,43 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
                   className={`sb-page-viewport ${isCurrent ? "current" : ""}`}
                   aria-label={`Page ${item.page + 1}: ${item.title}`}
                 >
-                  <div className={`sb-spread-stage sb-zoom-${zoom}`}>
-                    {imgSrc ? <img src={imgSrc} alt={item.title} /> : <div className="sb-spread-loading muted">Rendering page {item.page + 1}…</div>}
-                    <svg className="sb-overlay" viewBox={`${vx} ${vy} ${vx1 - vx} ${vy1 - vy}`} preserveAspectRatio="xMidYMid meet">
-                      {itemTextSlots.map((slot) => {
+                  {docPages(item).map((docPage, side) => {
+                  const imgSrc = previews[docPage] || rail[docPage];
+                  const left = side * LETTER_W;
+                  const pageSlots = itemTextSlots.filter((slot) => slot.bounds && slot.bounds[0] >= left && slot.bounds[0] < left + LETTER_W);
+                  return (
+                  <div key={docPage} id={`sb-page-${docPage}`} className={`sb-spread-stage sb-zoom-${zoom}`}>
+                    {imgSrc ? <img src={imgSrc} alt={`${item.title} · page ${docPage + 1}`} /> : <div className="sb-spread-loading muted">Rendering page {docPage + 1}…</div>}
+                    <svg className="sb-overlay" viewBox={`${left} ${vy} ${LETTER_W} ${vy1 - vy}`} preserveAspectRatio="xMidYMid meet">
+                      {pageSlots.map((slot) => {
                         const b = slot.bounds;
                         if (!b || b[2] <= b[0] || b[3] <= b[1]) return null;
-                        const key = slotKey(item.page, slot);
-                        const active = editing === key;
-                        const value = drafts[key] ?? slot.text ?? "";
-                        const dirty = drafts[key] !== undefined;
                         return (
                           <g key={slot.label}>
                             <rect
                               id={isCurrent ? `sb-slot-${slot.label}` : `sb-slot-p${item.page}-${slot.label}`}
-                              className={`sb-slot sb-slot-text ${active ? "active" : ""}`}
+                              className="sb-slot sb-slot-text"
                               x={b[0]}
                               y={b[1]}
                               width={b[2] - b[0]}
                               height={b[3] - b[1]}
                               role="button"
                               tabIndex={0}
-                              aria-label={`${slot.label}: click to edit text`}
-                              onClick={() => {
-                                setPageIndex(item.page);
-                                setEditing(active ? null : key);
-                              }}
+                              aria-label={`${slot.label}: select page`}
+                              onClick={() => setPageIndex(item.page)}
                               onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  setPageIndex(item.page);
-                                  setEditing(active ? null : key);
-                                }
+                                if (event.key === "Enter") setPageIndex(item.page);
                               }}
                             >
                               <title>{slot.label}</title>
                             </rect>
-                            {active && (() => {
-                              const w = Math.min(Math.max(b[2] - b[0], 420), vx1 - vx);
-                              const h = Math.min(Math.max(b[3] - b[1], 240), vy1 - vy);
-                              const x = Math.max(vx, Math.min(b[0], vx1 - w));
-                              const y = Math.max(vy, Math.min(b[1], vy1 - h));
-                              return (
-                                <foreignObject className="sb-canvas-editor" x={x} y={y} width={w} height={h}>
-                                  <div className="sb-field-editor">
-                                    <textarea
-                                      id={`sb-canvas-field-${slot.label}`}
-                                      aria-label={slot.label}
-                                      rows={4}
-                                      value={value}
-                                      onChange={(event) => change(item.page, slot, event.target.value)}
-                                    />
-                                    <div>
-                                      <button id={`sb-canvas-save-${slot.label}`} className="start" disabled={!!busy || !dirty} onClick={() => void save(item.page, slot)}>Save field</button>
-                                      <button id={`sb-canvas-cancel-${slot.label}`} className="ghost" disabled={!!busy} onClick={() => cancel(item.page, slot)}>Cancel</button>
-                                    </div>
-                                  </div>
-                                </foreignObject>
-                              );
-                            })()}
                           </g>
                         );
                       })}
                     </svg>
                   </div>
+                  );
+                  })}
                 </section>
               );
             })
@@ -303,7 +238,6 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
           )}
         </div>
         {error && <p role="alert" className="sb-error">{error}</p>}
-        <footer role="status">{busy || `${Object.keys(drafts).length ? `${Object.keys(drafts).length} unsaved field(s) · ` : ""}Click any text frame on the page to edit inline · Static template chrome is locked · Open in DesignCraft ↗ for layout edits.`}</footer>
         {!pages.length && (
           <button id="storyboard-new" className="start" disabled={!!busy} onClick={() => void action("Creating storyboard…", () => executeCommand("storyboard.new", { path: `${folder}/storyboard.designcraft`, overwrite: false, _expected_project: projectPath }), true)}>
             Create from the DesignCraft template

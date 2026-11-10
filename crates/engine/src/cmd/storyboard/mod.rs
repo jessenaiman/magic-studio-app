@@ -11,16 +11,38 @@ use serde_json::{Value, json};
 pub(crate) use commands::{CompletionCache, completion};
 pub use commands::{
     cmd_storyboard_add, cmd_storyboard_check, cmd_storyboard_cues, cmd_storyboard_export, cmd_storyboard_locations, cmd_storyboard_lyrics, cmd_storyboard_new,
-    cmd_storyboard_open, cmd_storyboard_pages, cmd_storyboard_section, cmd_storyboard_set, cmd_storyboard_thumbnail,
+    cmd_storyboard_open, cmd_storyboard_pages, cmd_storyboard_plan, cmd_storyboard_section, cmd_storyboard_set, cmd_storyboard_thumbnail,
 };
 
 use crate::{EngineError, Result};
 
-/// Each page type and the slot label that marks it.
-pub const ARCHETYPES: &[(&str, &str)] =
-    &[("cover", "cover_title"), ("world", "world_heading"), ("char", "char_heading"), ("motion", "motion_heading"), ("scene", "scene_id")];
+/// Each page type and the slot label that marks it, first match wins. A `section` page is the
+/// title page that opens a section; the others are its repeating pages: Cover, Backgrounds
+/// (`world`), Characters (`character_cover`, then `char` pair sheets), Scenes (`scene`: one
+/// Scene | Lyrics | Motion spread per song section), Assets and Final.
+pub const ARCHETYPES: &[(&str, &str)] = &[
+    ("section", "section_title"),
+    ("cover", "cover_title"),
+    ("world", "world_heading"),
+    ("character_cover", "character_cover_heading"),
+    ("char", "char_heading"),
+    ("scene", "scene_id"),
+    ("assets", "assets_heading"),
+    ("final", "final_heading"),
+];
 
-const TITLE_LABELS: &[&str] = &["cover_title", "world_heading", "char_heading", "motion_heading", "scene_title", "scene_id", "title"];
+const TITLE_LABELS: &[&str] = &[
+    "section_title",
+    "cover_title",
+    "world_heading",
+    "character_cover_heading",
+    "char_heading",
+    "scene_title",
+    "scene_id",
+    "assets_heading",
+    "final_heading",
+    "title",
+];
 
 fn item_bounds(item: &Value) -> Option<[f64; 4]> {
     let xf = item.get("xf").and_then(Value::as_array);
@@ -90,6 +112,10 @@ pub(super) struct Page {
     pub(super) section: Option<String>,
     pub(super) bounds: [f64; 4],
     pub(super) slots: Vec<Slot>,
+    /// The spread's first Letter page, 0-based in document page order (what DesignCraft renders and prints).
+    pub(super) first_page: usize,
+    /// Single pages in the spread: 1 for a section title page, 2 for an inside pair.
+    pub(super) page_count: usize,
 }
 
 impl Page {
@@ -116,6 +142,7 @@ impl Page {
             "section": self.section,
             "title": self.title(),
             "bounds": self.bounds,
+            "document_pages": (self.first_page..self.first_page + self.page_count).collect::<Vec<_>>(),
             "slots": slots,
         })
     }
@@ -227,6 +254,7 @@ impl Storyboard {
         let default_w = doc["settings"]["pageWidth"].as_f64().unwrap_or(1600.0);
         let default_h = doc["settings"]["pageHeight"].as_f64().unwrap_or(1000.0);
         let mut pages = Vec::new();
+        let mut first_page = 0;
         for (index, spread) in doc["spreads"].as_array().into_iter().flatten().enumerate() {
             let mut slots = Vec::new();
             for item in spread["items"].as_array().into_iter().flatten() {
@@ -253,8 +281,10 @@ impl Storyboard {
             let labels: Labels = slots.iter().map(|s| (s.label.clone(), s.id)).collect();
             let archetype = ARCHETYPES.iter().find(|(_, marker)| labels.contains_key(*marker)).map_or("scene", |(name, _)| *name).to_string();
             let section = spread["pages"][0]["parent"].as_u64().and_then(|pid| parents.get(&pid).cloned());
-            let bounds = [0.0, 0.0, default_w, default_h];
-            pages.push(Page { index, archetype, section, bounds, slots });
+            let page_count = spread["pages"].as_array().map_or(1, Vec::len).max(1);
+            let bounds = [0.0, 0.0, default_w * page_count as f64, default_h];
+            pages.push(Page { index, archetype, section, bounds, slots, first_page, page_count });
+            first_page += page_count;
         }
         Ok(pages)
     }

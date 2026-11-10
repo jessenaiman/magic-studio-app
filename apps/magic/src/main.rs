@@ -7,8 +7,10 @@ mod capture;
 mod clipboard_image;
 mod control;
 mod dialogs;
+mod global_shortcut;
 mod keymap;
 mod lifecycle;
+mod notification;
 mod studio;
 mod studio_audio;
 
@@ -151,6 +153,8 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
         "ui.dialog.state" | "ui.dialog.override" => return dialogs::control(app, id, &params),
         "ui.filmcraft" => return studio::control(&params),
         "ui.effectcraft" => return studio::control_effect(&params),
+        "ui.designcraft" => return studio::control_design(&params),
+        "design.open" => return studio::open_design_path(&params),
         "video.open" => return studio::open_project(app),
         "ui.keymap.press" => return keymap::control(app, &params),
         "ui.feedback" | "ui.look" => return ui_request(app, "ui.inspect", params),
@@ -183,6 +187,7 @@ fn run_engine_command(app: &tauri::AppHandle, id: &str, params: Value, notify: b
     {
         return Err("The active project changed; the previous workspace command was not run".into());
     }
+    let params_for_notify = params.clone();
     let result = if id == "clipboard.import_image" {
         clipboard_image::import_image(app, &mut session, &params)?
     } else {
@@ -193,7 +198,34 @@ fn run_engine_command(app: &tauri::AppHandle, id: &str, params: Value, notify: b
     if notify && changed {
         app.emit("magic-session-changed", ()).map_err(|e| e.to_string())?;
     }
+    fire_notification(app, id, &params_for_notify, &result);
     Ok(result)
+}
+
+fn fire_notification(_app: &tauri::AppHandle, id: &str, params: &Value, result: &Value) {
+    let success = result.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    match id {
+        "video.assemble" => {
+            let export_path = result.get("export").and_then(Value::as_str);
+            notification::notify_video_assemble(export_path, success);
+        }
+        "image.generate" => {
+            let asset_name = result.get("asset_id").and_then(Value::as_str).unwrap_or("Generated image");
+            let provider = result.get("provider").and_then(Value::as_str).unwrap_or("unknown");
+            notification::notify_image_generated(asset_name, provider, success);
+        }
+        id if id.starts_with("scribbles.") => {
+            let kind = id.strip_prefix("scribbles.").unwrap_or("operation");
+            let character = result.get("character").or_else(|| params.get("character")).and_then(Value::as_str);
+            let asset_count = result.get("registered_count").and_then(Value::as_u64).unwrap_or(0) as usize;
+            notification::notify_scribbles(kind, character, asset_count, success);
+        }
+        "video.export" => {
+            let path = result.get("export").and_then(Value::as_str).unwrap_or("");
+            notification::notify_video_export(path, success);
+        }
+        _ => {}
+    }
 }
 
 #[tauri::command]
@@ -292,6 +324,8 @@ fn main() {
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_upload::init())
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
@@ -317,11 +351,20 @@ fn main() {
             ui_reply,
             session_snapshot,
             dialogs::pick_file,
-            keymap::key_pressed
+            keymap::key_pressed,
+            global_shortcut::reregister_cmd,
+            global_shortcut::list_registered_cmd
         ])
         .setup(move |app| {
+            // The updater refuses to start without `plugins.updater` (pubkey + endpoints) in
+            // tauri.conf.json; register it only once that is configured.
+            if app.config().plugins.0.get("updater").is_some_and(|c| !c.is_null()) {
+                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
             studio::install_film_host();
             studio::install_effect_host();
+            notification::init(app.handle().clone());
+            global_shortcut::init(app.handle().clone())?;
             if let Some(path) = &cli.project {
                 dispatch(app.handle(), "project.open", json!({"path":path}), false)?;
             }

@@ -44,169 +44,17 @@ pub struct ScribblesPrefs {
     pub model: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct LyricsPrefs {
-    pub default_size: i64,
-    pub outline: bool,
-}
-
-impl Default for LyricsPrefs {
-    fn default() -> Self {
-        Self { default_size: 72, outline: true }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AnimationPrefs {
-    pub loop_preview: bool,
-    pub duration: f64,
-}
-
-impl Default for AnimationPrefs {
-    fn default() -> Self {
-        Self { loop_preview: true, duration: 4.0 }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AppearancePrefs {
-    pub theme: String,
-    pub accessible_contrast: bool,
-    pub ui_scale: f64,
-}
-
-impl Default for AppearancePrefs {
-    fn default() -> Self {
-        Self { theme: "dark".into(), accessible_contrast: false, ui_scale: 1.0 }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct GeneralPrefs {
-    pub at_startup: String,
-    pub when_opening_project: String,
-    pub show_tooltips: bool,
-    pub show_rich_tooltips: bool,
-    pub recent_projects: String,
-}
-
-impl Default for GeneralPrefs {
-    fn default() -> Self {
-        Self {
-            at_startup: "showHome".into(),
-            when_opening_project: "showOpenDialog".into(),
-            show_tooltips: true,
-            show_rich_tooltips: true,
-            recent_projects: String::new(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AutosavePrefs {
-    pub enabled: bool,
-    pub interval_minutes: i64,
-}
-
-impl Default for AutosavePrefs {
-    fn default() -> Self {
-        Self { enabled: true, interval_minutes: 5 }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MediaCachePrefs {
-    pub max_mb: i64,
-    pub location: Option<String>,
-}
-
-impl Default for MediaCachePrefs {
-    fn default() -> Self {
-        Self { max_mb: 4096, location: None }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct PlaybackPrefs {
-    pub resolution: String,
-    pub draft_decode: bool,
-}
-
-impl Default for PlaybackPrefs {
-    fn default() -> Self {
-        Self { resolution: "half".into(), draft_decode: true }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct TimelinePrefs {
-    pub still_image_duration: f64,
-    pub transition_duration: f64,
-}
-
-impl Default for TimelinePrefs {
-    fn default() -> Self {
-        Self { still_image_duration: 5.0, transition_duration: 1.0 }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AudioPrefs {
-    pub edit_location: Option<String>,
-    pub output_device: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct LabelsPrefs {
-    pub preset: String,
-}
-
-impl Default for LabelsPrefs {
-    fn default() -> Self {
-        Self { preset: "Default".into() }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MediaPrefs {
-    pub analyze_on_import: bool,
-}
-
-impl Default for MediaPrefs {
-    fn default() -> Self {
-        Self { analyze_on_import: true }
-    }
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MagicPrefs {
+    // Per docs/settings-storage.md (verbatim from craft-libs):
+    // config.toml = settings people might edit. Window/UI state (theme, scale,
+    // startup, tooltips, recent projects) belongs in ui.ron/app.ron beside
+    // config.toml, caches in cache_dir, recovery in data_dir, API keys in the
+    // OS keychain — none of those fields are in this config.toml anymore.
     pub project: ProjectPrefs,
     pub image: ImagePrefs,
     pub scribbles: ScribblesPrefs,
-    pub lyrics: LyricsPrefs,
-    pub animation: AnimationPrefs,
-    pub appearance: AppearancePrefs,
-    pub general: GeneralPrefs,
-    pub autosave: AutosavePrefs,
-    #[serde(rename = "mediaCache")]
-    pub media_cache: MediaCachePrefs,
-    pub playback: PlaybackPrefs,
-    pub timeline: TimelinePrefs,
-    pub audio: AudioPrefs,
-    pub labels: LabelsPrefs,
-    pub media: MediaPrefs,
     pub tools: BTreeMap<String, String>,
 }
 
@@ -277,30 +125,6 @@ impl MagicPrefs {
             "scribbles.template" => opt_str_json(&self.scribbles.template),
             "scribbles.provider" => opt_str_json(&self.scribbles.provider),
             "scribbles.model" => opt_str_json(&self.scribbles.model),
-            "lyrics.default_size" => json!(self.lyrics.default_size),
-            "lyrics.outline" => json!(self.lyrics.outline),
-            "animation.loop_preview" => json!(self.animation.loop_preview),
-            "animation.duration" => json!(self.animation.duration),
-            "appearance.theme" => json!(self.appearance.theme),
-            "appearance.accessible_contrast" => json!(self.appearance.accessible_contrast),
-            "appearance.ui_scale" => json!(self.appearance.ui_scale),
-            "general.at_startup" => json!(self.general.at_startup),
-            "general.when_opening_project" => json!(self.general.when_opening_project),
-            "general.show_tooltips" => json!(self.general.show_tooltips),
-            "general.show_rich_tooltips" => json!(self.general.show_rich_tooltips),
-            "general.recent_projects" => json!(self.general.recent_projects),
-            "autosave.enabled" => json!(self.autosave.enabled),
-            "autosave.interval_minutes" => json!(self.autosave.interval_minutes),
-            "mediaCache.max_mb" => json!(self.media_cache.max_mb),
-            "mediaCache.location" => opt_str_json(&self.media_cache.location),
-            "playback.resolution" => json!(self.playback.resolution),
-            "playback.draft_decode" => json!(self.playback.draft_decode),
-            "timeline.still_image_duration" => json!(self.timeline.still_image_duration),
-            "timeline.transition_duration" => json!(self.timeline.transition_duration),
-            "audio.edit_location" => opt_str_json(&self.audio.edit_location),
-            "audio.output_device" => json!(self.audio.output_device),
-            "labels.preset" => json!(self.labels.preset),
-            "media.analyze_on_import" => json!(self.media.analyze_on_import),
             _ => Value::Null,
         }
     }
@@ -317,30 +141,6 @@ impl MagicPrefs {
             "scribbles.template" => self.scribbles.template = opt_str_from_value(value),
             "scribbles.provider" => self.scribbles.provider = opt_str_from_value(value),
             "scribbles.model" => self.scribbles.model = opt_str_from_value(value),
-            "lyrics.default_size" => self.lyrics.default_size = value.as_i64().unwrap_or(72),
-            "lyrics.outline" => self.lyrics.outline = value.as_bool().unwrap_or(true),
-            "animation.loop_preview" => self.animation.loop_preview = value.as_bool().unwrap_or(true),
-            "animation.duration" => self.animation.duration = value.as_f64().unwrap_or(4.0),
-            "appearance.theme" => self.appearance.theme = value.as_str().unwrap_or("dark").to_owned(),
-            "appearance.accessible_contrast" => self.appearance.accessible_contrast = value.as_bool().unwrap_or(false),
-            "appearance.ui_scale" => self.appearance.ui_scale = value.as_f64().unwrap_or(1.0),
-            "general.at_startup" => self.general.at_startup = value.as_str().unwrap_or("showHome").to_owned(),
-            "general.when_opening_project" => self.general.when_opening_project = value.as_str().unwrap_or("showOpenDialog").to_owned(),
-            "general.show_tooltips" => self.general.show_tooltips = value.as_bool().unwrap_or(true),
-            "general.show_rich_tooltips" => self.general.show_rich_tooltips = value.as_bool().unwrap_or(true),
-            "general.recent_projects" => self.general.recent_projects = value.as_str().unwrap_or_default().to_owned(),
-            "autosave.enabled" => self.autosave.enabled = value.as_bool().unwrap_or(true),
-            "autosave.interval_minutes" => self.autosave.interval_minutes = value.as_i64().unwrap_or(5),
-            "mediaCache.max_mb" => self.media_cache.max_mb = value.as_i64().unwrap_or(4096),
-            "mediaCache.location" => self.media_cache.location = opt_str_from_value(value),
-            "playback.resolution" => self.playback.resolution = value.as_str().unwrap_or("half").to_owned(),
-            "playback.draft_decode" => self.playback.draft_decode = value.as_bool().unwrap_or(true),
-            "timeline.still_image_duration" => self.timeline.still_image_duration = value.as_f64().unwrap_or(5.0),
-            "timeline.transition_duration" => self.timeline.transition_duration = value.as_f64().unwrap_or(1.0),
-            "audio.edit_location" => self.audio.edit_location = opt_str_from_value(value),
-            "audio.output_device" => self.audio.output_device = value.as_str().unwrap_or_default().to_owned(),
-            "labels.preset" => self.labels.preset = value.as_str().unwrap_or("Default").to_owned(),
-            "media.analyze_on_import" => self.media.analyze_on_import = value.as_bool().unwrap_or(true),
             _ => return Err(bad(format!("unknown setting `{key}`; see prefs.schema"))),
         }
         Ok(())

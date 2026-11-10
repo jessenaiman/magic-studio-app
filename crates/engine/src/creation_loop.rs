@@ -1,5 +1,6 @@
 //! Shared Resources guide. An edit changes one field and never opens a song project.
 use crate::{EngineError, Result, Session};
+use craft_atomic::atomic_write;
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 
@@ -37,9 +38,8 @@ pub fn workflow(_: &mut Session, p: &Value) -> Result<Value> {
         }
         let text = p["value"].as_str().filter(|v| !v.trim().is_empty()).ok_or_else(|| invalid("Workflow text cannot be empty"))?;
         row[field] = json!(text);
-        let temporary = dir.join("creator-loop.pending");
-        crate::doc_state::write_file(&temporary, serde_json::to_vec_pretty(&doc).map_err(|e| invalid(&e.to_string()))?)?;
-        fs::rename(temporary, &path)?;
+        let bytes = serde_json::to_vec_pretty(&doc).map_err(|e| invalid(&e.to_string()))?;
+        atomic_write(&path, &bytes)?;
         doc
     } else {
         read(&path)?

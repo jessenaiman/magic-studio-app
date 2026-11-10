@@ -1,5 +1,6 @@
 //! Project conversations are commands, shared by the desktop, UI and CLI.
 use crate::{EngineError, Result, Session};
+use craft_settings::paths::{Location, Portable, Probe, data_dir, resolve};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -7,6 +8,8 @@ use std::{
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+const PORTABLE: Portable = Portable::DEFAULT;
 
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
@@ -29,7 +32,7 @@ pub fn default_agent() -> Option<String> {
 }
 
 fn settings_base() -> Option<std::path::PathBuf> {
-    std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+    resolve("magic", &PORTABLE, &Location::Auto, &Probe::default()).dir
 }
 
 fn read_stored_settings(base: Option<std::path::PathBuf>) -> Result<Value> {
@@ -85,11 +88,8 @@ pub fn settings() -> Result<Value> {
 /// Persist a repaired chat selection to the same settings file the app edits.
 /// Every other key (including credentials) is preserved exactly.
 fn persist_selection(selection: &Value) -> Result<Value> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
-        .ok_or_else(|| invalid("Cannot locate the app settings directory; selection not persisted"))?;
-    let path = base.join("magic/agent.json");
+    let base = settings_base().ok_or_else(|| invalid("Cannot locate the app settings directory; selection not persisted"))?;
+    let path = base.join("agent.json");
     let mut stored = fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or_else(|| json!({}));
     if !stored.is_object() {
         stored = json!({});
@@ -152,10 +152,8 @@ fn model_is_free(model: &Value) -> bool {
 }
 /// Known models for an installed agent, read from Omarchy usage state.
 fn omarchy_agent_models(agent: &str) -> Option<Vec<Value>> {
-    let base = std::env::var_os("XDG_STATE_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/state")))?;
-    let path = base.join(format!("omarchy/agents/usage/{agent}.json"));
+    let base = data_dir("omarchy")?;
+    let path = base.join(format!("agents/usage/{agent}.json"));
     let bytes = fs::read(path).ok()?;
     let v: Value = serde_json::from_slice(&bytes).ok()?;
     let obj = v["modelUsage"].as_object()?;

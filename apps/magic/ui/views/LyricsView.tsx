@@ -721,8 +721,10 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
                           else anchorRefs.current.delete(key);
                         }}
                         type="button"
+                        id={`lyrics-anchor-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`}
                         className="lyrics-moment-anchor-btn"
                         title="Tethered to 16:9 stage"
+                        aria-label={`Select ${key} on the 16:9 stage`}
                       >
                         ⚓
                       </button>
@@ -997,7 +999,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
                 onPointerUp={onStageDrawUp}
               >
                 {/* Motion Trajectory Arrows for every item on stage */}
-                {activeDesign.items.map((it, idx) => {
+                {mode === "motion" && activeDesign.items.map((it, idx) => {
                   const bw = it.w ?? 640;
                   const bh = it.h ?? 150;
                   const cx = it.x + bw * 0.5;
@@ -1199,11 +1201,6 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
                 );
               })}
 
-              <div className="lyrics-stage-hint-pill">
-                {mode === "motion"
-                  ? "Drag any word to adjust spatial trajectory · Use dials on right to keyframe in lyrics.ecproj"
-                  : "Drag to position · Top circle to rotate 360° · Corner to resize"}
-              </div>
             </div>
           </div>
 
@@ -1391,6 +1388,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
                         <button
                           key={`sc-${sc.clip}`}
                           type="button"
+                          id={`timeline-scene-${String(sc.clip).replace(/[^a-zA-Z0-9_-]/g, "-")}`}
                           className="timeline-scene-pill"
                           style={{ left: `${left}%`, width: `${width}%` }}
                           title={`${sc.name} (${formatTime(sc.start_sec)} – ${formatTime(sc.end_sec)})`}
@@ -1468,6 +1466,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
                       <button
                         key={key}
                         type="button"
+                        id={`timeline-clip-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`}
                         className={`timeline-clip-pill ${activeKey === key ? "active" : ""}`}
                         style={{ left: `${left}%`, width: `${width}%` }}
                         title={`${grp.sectionName}: ${grp.text}`}

@@ -143,6 +143,8 @@ export interface StoryboardSlot {
 export interface StoryboardPage {
   page: number; archetype: string; section?: string | null; title: string;
   bounds: [number, number, number, number]; groups: string[]; slots: StoryboardSlot[];
+  /** The spread's Letter pages, 0-based in document order: one for a section title, two for a pair. */
+  document_pages?: number[];
 }
 export interface StoryboardData {
   path?: string; complete?: boolean; status?: string; page_count?: number; count?: number;
