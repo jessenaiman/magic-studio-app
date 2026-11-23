@@ -15,6 +15,7 @@ import { GalleryView } from "./views/GalleryView";
 import { HomeView } from "./views/HomeView";
 import { MayhemView } from "./views/MayhemView";
 import { ProjectView } from "./views/ProjectView";
+import { ScribblesView } from "./views/ScribblesView";
 import { PreservedStoryboard } from "./views/StoryboardView";
 
 export type ViewMode =
@@ -26,7 +27,8 @@ export type ViewMode =
   | "gallery"
   | "animation"
   | "studio"
-  | "mayhem";
+  | "mayhem"
+  | "scribbles";
 
 const formatClock = (sec: number): string => {
   if (!Number.isFinite(sec) || sec < 0) return "0:00";
@@ -131,23 +133,16 @@ export const App: React.FC = () => {
     }
   };
 
-  const openScribbles = async () => {
-    try {
-      const res = await executeCommand<{
-        ingested?: { character_id?: string; registered_count?: number };
-      }>("scribbles.open", {
-        character: selectedCharacterId,
-      });
-      const count = res?.ingested?.registered_count ?? 0;
-      if (count > 0) {
-        await refreshProject();
-        showToast(`Opened Scribbles (Moppet Maker) · ingested ${count} asset${count === 1 ? "" : "s"}`);
-      } else {
-        showToast("Opened Scribbles (Google Flow Moppet Maker)");
-      }
-    } catch (error) {
-      showToast(`Could not open Scribbles: ${error}`);
+  const prevViewRef = useRef<ViewMode>("home");
+
+  const toggleScribbles = () => {
+    if (view === "scribbles") {
+      const fallback: ViewMode = projectPath ? "project" : "home";
+      setView(prevViewRef.current === "scribbles" ? fallback : prevViewRef.current);
+      return;
     }
+    prevViewRef.current = view;
+    setView("scribbles");
   };
 
   useEffect(() => {
@@ -179,7 +174,7 @@ export const App: React.FC = () => {
         () => {
           const state = liveState.current;
           return { ok: true, renderer: "tauri", ready: true,
-            view: state.projectPath || state.view === "gallery" ? state.view : "home", requestedView: state.view,
+            view: state.projectPath || state.view === "gallery" || state.view === "mayhem" || state.view === "scribbles" ? state.view : "home", requestedView: state.view,
             project: state.projectPath, busy: state.busy, status: state.toastMsg };
         },
         next => setView(next as ViewMode),
@@ -446,12 +441,13 @@ export const App: React.FC = () => {
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><circle cx="8" cy="8" r="3.2" /><circle cx="16" cy="8" r="3.2" /><path d="M5 20c1.2-3 3.8-5 7-5s5.8 2 7 5" /></svg>
             </button>
             </Tooltip>
-            <Tooltip label="Open Scribbles (Google Flow Moppet Maker & auto-ingest downloads)">
+            <Tooltip label="Scribbles (Google Flow tool)">
             <button
               id="scribbles-toggle"
-              className="craft-dock-btn craft-scribbles"
-              onClick={() => void openScribbles()}
-              aria-label="Open Scribbles (Moppet Maker)"
+              className={`craft-dock-btn craft-scribbles ${view === "scribbles" ? "active" : ""}`}
+              onClick={toggleScribbles}
+              aria-label="Open Scribbles (Google Flow tool)"
+              aria-pressed={view === "scribbles"}
             >
               <img
                 src="/scribbles-cat-work.svg"
@@ -468,7 +464,7 @@ export const App: React.FC = () => {
       </header>
 
       {/* Persistent Horizontal Asset Drawer attached below the top menu bar across project views (hidden by default, pinnable) */}
-      {projectPath && view !== "home" && view !== "gallery" && view !== "mayhem" && (
+      {projectPath && view !== "home" && view !== "gallery" && view !== "mayhem" && view !== "scribbles" && (
         <StageAssets
           projectPath={projectPath}
           view={view}
@@ -503,7 +499,9 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="app-view-host">
-        {view === "gallery" ? (
+        {view === "scribbles" ? (
+          <ScribblesView onToast={showToast} />
+        ) : view === "gallery" ? (
           <GalleryView />
         ) : view === "mayhem" ? (
           <MayhemView onToast={showToast} />
@@ -541,7 +539,7 @@ export const App: React.FC = () => {
         ) : null}
         {/* Keep the storyboard mounted across view switches: remounting it reloads DesignCraft
             mid-write and can flash an empty page list. */}
-        {projectPath && view !== "home" && view !== "gallery" && view !== "mayhem" && (
+        {projectPath && view !== "home" && view !== "gallery" && view !== "mayhem" && view !== "scribbles" && (
           <PreservedStoryboard
             key={`storyboard-${projectPath}`}
             active={view === "storyboard"}

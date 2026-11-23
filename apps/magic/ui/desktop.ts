@@ -125,7 +125,7 @@ export async function connectDesktop(
           if (keys.some(k => !["view","time"].includes(k))) throw new Error("View navigation accepts view and optional authoring time");
           const aliases: Record<string, string> = { projects: "project", lyrics: "design" };
           const view = aliases[String(params.view)] || String(params.view);
-          if (!["home", "project", "storyboard", "design", "motion", "gallery", "animation", "studio"].includes(view)) throw new Error("Unknown view");
+          if (!["home", "project", "storyboard", "design", "motion", "gallery", "animation", "studio", "mayhem", "scribbles"].includes(view)) throw new Error("Unknown view");
           if (params.time !== undefined) {
             if (!["design","motion"].includes(view) || typeof params.time !== "number" || !Number.isFinite(params.time) || params.time < 0) throw new Error("Authoring time requires Lyrics or Motion and nonnegative seconds");
             const project=(inspect() as {project?:string}).project;

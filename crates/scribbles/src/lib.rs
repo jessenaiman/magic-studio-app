@@ -16,14 +16,14 @@ use std::process::Command;
 
 /// Default Google Flow Moppet Maker Tool URL in the user's `Moppet Animation` project (for character animation: parts sheets, pose sheets, sprite cycles).
 pub const DEFAULT_MOPPET_MAKER_URL: &str =
-    "https://flow.google.com/project/a16c9456-67b1-41f8-a995-79f4918d6737/tool/c4919fed-dcbe-498c-9839-2073ce1c8609?fromViewSource=tools";
+    "https://flow.google.com/project/3102c6e1-22d8-49b0-abdf-6496f5819190/tool/2129f8ab-a33e-4ab7-a5da-c2454e714100?fromViewSource=tools";
 
 /// Default Google Flow Storyboard & Animation Master Pack Tool URL (for one-pass storyboard page & slot asset generation/recreation with ID name markers).
 pub const DEFAULT_STORYBOARD_PACK_TOOL_URL: &str =
     "https://flow.google.com/project/a16c9456-67b1-41f8-a995-79f4918d6737/tool/191f61c7-21f6-434f-b679-4920807e2d62?fromViewSource=tools";
 
 /// Default Google Flow project URL (`Moppet Animation`).
-pub const DEFAULT_FLOW_PROJECT_URL: &str = "https://flow.google.com/project/a16c9456-67b1-41f8-a995-79f4918d6737";
+pub const DEFAULT_FLOW_PROJECT_URL: &str = "https://flow.google.com/project/3102c6e1-22d8-49b0-abdf-6496f5819190";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ScribblesError {
