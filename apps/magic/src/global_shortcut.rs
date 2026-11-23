@@ -39,13 +39,13 @@ impl GlobalShortcutManager {
                     let app_handle = self.app.clone();
                     global_shortcut
                         .on_shortcut(chord_str.as_str(), move |_app, _shortcut, _event| {
-                            let _ = tauri::async_runtime::spawn_blocking({
+                            drop(tauri::async_runtime::spawn_blocking({
                                 let app = app_handle.clone();
                                 let cmd = command_id.clone();
                                 move || {
                                     let _ = crate::keymap::press(&app, &cmd, false);
                                 }
-                            });
+                            }));
                         })
                         .map_err(|e| format!("Failed to register global shortcut {}: {}", chord_str, e))?;
                     log::info!("Registered global shortcut: {} -> {}", chord_str, bindable.command);

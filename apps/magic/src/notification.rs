@@ -83,10 +83,3 @@ pub fn notify_video_export(path: &str, success: bool) {
         }
     }
 }
-
-/// Send a generic Magic Studio notification.
-pub fn notify(title: &str, body: &str) {
-    if let Some(notifier) = NOTIFIER.get() {
-        notifier.show(title, body);
-    }
-}

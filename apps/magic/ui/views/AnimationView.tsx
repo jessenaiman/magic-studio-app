@@ -538,6 +538,15 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
           );
         })}
       </div>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) var(--size-290, 290px)",
+          gridTemplateRows: "minmax(0, 1fr) auto",
+        }}
+      >
       <AnimationStage
         selectedCharId={selectedCharId}
         selectedView={selectedView}
@@ -735,6 +744,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
         onSaveMotion={() => void handleSavePath()}
         onToast={onToast}
       />
+      </div>
     </section>
   );
 };

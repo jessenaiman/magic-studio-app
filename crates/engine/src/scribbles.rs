@@ -1305,7 +1305,7 @@ fn append_page_pack_items(
                     animation_style: "ai_plate_post".into(),
                     references: vec!["L01".into(), "C01".into()],
                     existing_image: slot_image_in(&slots, &slot),
-                    aspect: Some(if slot.starts_with("assets_thumb") { "16:9" } else { "16:9" }.into()),
+                    aspect: Some("16:9".into()),
                     ..Default::default()
                 });
             }
@@ -1318,6 +1318,35 @@ fn append_page_pack_items(
 fn filled(text: String) -> String {
     let t = text.trim().trim_matches(|c| c == '“' || c == '”');
     if t.starts_with('[') || t.is_empty() { String::new() } else { text.trim().to_string() }
+}
+
+/// Populate each pack item's `page_sheet` thumbnail from an exported `Pages` storyboard sheet.
+fn attach_page_sheets(s: &mut Session, pages: &[Value], items: &mut [StoryboardPackItem]) {
+    let Ok(export) = s.execute("storyboard.export", json!({})) else {
+        return;
+    };
+    let mut sheet_of: BTreeMap<u64, String> = BTreeMap::new();
+    for f in export["files"].as_array().into_iter().flatten() {
+        if f["version"].as_str() == Some("Pages")
+            && let (Some(n), Some(path)) = (f["pages"][0].as_u64(), f["path"].as_str())
+        {
+            sheet_of.insert(n.saturating_sub(1), path.to_string());
+        }
+    }
+    for item in items {
+        let doc_pages: Vec<u64> = pages
+            .iter()
+            .find(|pg| pg["page"].as_u64() == Some(item.page as u64))
+            .and_then(|pg| pg["document_pages"].as_array())
+            .map(|list| list.iter().filter_map(Value::as_u64).collect())
+            .unwrap_or_default();
+        let side = match item.kind.as_str() {
+            "lyrics" => 1,
+            "motion" => 2,
+            _ => usize::from(item.slot.starts_with("char_pose") || item.slot.starts_with("world_source") || item.slot.starts_with("world_result")),
+        };
+        item.page_sheet = doc_pages.get(side).or(doc_pages.first()).and_then(|n| sheet_of.get(n)).cloned();
+    }
 }
 
 /// Build the Master Storyboard & Animation Pack (`storyboard/storyboard-pack.json`) by reading
@@ -1360,31 +1389,8 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
     }
 
     // Each card's page sheet: the exported PNG of the Letter page it sits on.
-    if p["page_sheets"].as_bool().unwrap_or(true)
-        && let Ok(export) = s.execute("storyboard.export", json!({}))
-    {
-        let mut sheet_of: BTreeMap<u64, String> = BTreeMap::new();
-        for f in export["files"].as_array().into_iter().flatten() {
-            if f["version"].as_str() == Some("Pages")
-                && let (Some(n), Some(path)) = (f["pages"][0].as_u64(), f["path"].as_str())
-            {
-                sheet_of.insert(n.saturating_sub(1), path.to_string());
-            }
-        }
-        for item in &mut items {
-            let doc_pages: Vec<u64> = pages
-                .iter()
-                .find(|pg| pg["page"].as_u64() == Some(item.page as u64))
-                .and_then(|pg| pg["document_pages"].as_array())
-                .map(|list| list.iter().filter_map(Value::as_u64).collect())
-                .unwrap_or_default();
-            let side = match item.kind.as_str() {
-                "lyrics" => 1,
-                "motion" => 2,
-                _ => usize::from(item.slot.starts_with("char_pose") || item.slot.starts_with("world_source") || item.slot.starts_with("world_result")),
-            };
-            item.page_sheet = doc_pages.get(side).or(doc_pages.first()).and_then(|n| sheet_of.get(n)).cloned();
-        }
+    if p["page_sheets"].as_bool().unwrap_or(true) {
+        attach_page_sheets(s, &pages, &mut items);
     }
 
     // Build the Master World Composite (`storyboard/composites/MASTER_WORLD__composite.png`) by flattening

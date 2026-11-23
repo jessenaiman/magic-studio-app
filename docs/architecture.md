@@ -49,7 +49,7 @@ Rules: every workspace crate has a layer; edges must strictly go down (`dl < l`)
 ├─ docs: Vec<DocState> (lyric design, storyboard, cast, film) — each owns dirty+stamp
 └─ save: Session::has_unsaved_changes() + save_all() in session/save.rs (single SRP; no counters, no autosave)
 ```
-Files written only on save (`Session::save_all()`, called by `project.save` / Cmd+S). `link_watch.rs` reloads external changes. `craft-doc` is read-only inspection (see [craft-doc.md](craft-doc.md) verbatim) — never a save path. Undo = `session/undo.rs` snapshots.
+Files written only on save (`Session::save_all()`, called by `project.save` / Cmd+S). `link_watch.rs` reloads external changes. `craft-doc` (`storytold/craft-libs`) is read-only inspection — never a save path. Undo = `session/undo.rs` snapshots.
 
 ## 3. Command system (`crates/engine/src/commands.rs`)
 

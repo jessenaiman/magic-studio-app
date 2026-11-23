@@ -61,8 +61,3 @@ pub(super) fn control(app: &tauri::AppHandle, params: &Value) -> Result<Value, S
     let chord = params["chord"].as_str().ok_or("ui.keymap.press needs a chord")?;
     press(app, chord, params["typing"] == true)
 }
-
-/// Get all bindables from the keymap for global shortcut registration.
-pub(crate) fn all_bindables() -> Vec<Bindable> {
-    keymap().catalog().into_iter().cloned().collect()
-}
